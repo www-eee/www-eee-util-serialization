@@ -1,0 +1,34 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>net.www-eee.util.serialization</groupId>
+    <artifactId>www-eee-util-serialization-parent</artifactId>
+    <version>1.0.0</version>
+  </parent>
+
+  <artifactId>www-eee-util-serialization-ws-rs</artifactId>
+  <packaging>jar</packaging>
+
+  <name>WWW-EEE Utilities - Serialization - Web Services / REST</name>
+
+  <properties>
+    <rs-api.version>2.0.1</rs-api.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>javax.ws.rs</groupId>
+      <artifactId>javax.ws.rs-api</artifactId>
+      <version>${rs-api.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>net.www-eee.util.serialization</groupId>
+      <artifactId>www-eee-util-serialization</artifactId>
+      <version>${project.version}</version>
+      <scope>compile</scope>
+    </dependency>
+  </dependencies>
+
+</project>
