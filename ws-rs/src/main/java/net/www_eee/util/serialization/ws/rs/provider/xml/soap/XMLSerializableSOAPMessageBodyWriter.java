@@ -10,6 +10,7 @@ package net.www_eee.util.serialization.ws.rs.provider.xml.soap;
 import java.net.*;
 
 import javax.xml.*;
+import javax.xml.soap.*;
 import javax.xml.stream.*;
 
 import org.eclipse.jdt.annotation.*;
@@ -29,7 +30,7 @@ public class XMLSerializableSOAPMessageBodyWriter extends XMLSerializableMessage
    * The <a href="http://www.w3.org/">W3C</a> &quot;<a href="http://www.w3.org/TR/soap/">SOAP</a>&quot;
    * <a href="http://www.w3.org/TR/xml-names/">namespace</a> URI.
    */
-  protected static final URI SOAP_ENV_NS_URI = URI.create("http://www.w3.org/2003/05/soap-envelope");
+  protected static final URI URI_NS_SOAP_1_2_ENVELOPE = URI.create(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE);
 
   /**
    * If you only want to write SOAP responses for some entities, like faults, and since you generally only want to
@@ -48,12 +49,12 @@ public class XMLSerializableSOAPMessageBodyWriter extends XMLSerializableMessage
   protected void writeXML(final XMLSerializable entity, final XMLStreamWriter streamWriter, @Nullable URI parentNamespace) throws XMLStreamException {
     final boolean shouldWriteSOAPResponse = shouldWriteSOAPResponse(entity);
     if (shouldWriteSOAPResponse) {
-      streamWriter.setDefaultNamespace(SOAP_ENV_NS_URI.toString());
-      streamWriter.writeStartElement(XMLConstants.DEFAULT_NS_PREFIX, "Envelope", SOAP_ENV_NS_URI.toString());
-      streamWriter.writeDefaultNamespace(SOAP_ENV_NS_URI.toString());
-      streamWriter.writeStartElement(XMLConstants.DEFAULT_NS_PREFIX, "Body", SOAP_ENV_NS_URI.toString());
+      streamWriter.setDefaultNamespace(URI_NS_SOAP_1_2_ENVELOPE.toString());
+      streamWriter.writeStartElement(XMLConstants.DEFAULT_NS_PREFIX, "Envelope", URI_NS_SOAP_1_2_ENVELOPE.toString());
+      streamWriter.writeDefaultNamespace(URI_NS_SOAP_1_2_ENVELOPE.toString());
+      streamWriter.writeStartElement(XMLConstants.DEFAULT_NS_PREFIX, "Body", URI_NS_SOAP_1_2_ENVELOPE.toString());
     }
-    super.writeXML(entity, streamWriter, shouldWriteSOAPResponse ? SOAP_ENV_NS_URI : parentNamespace);
+    super.writeXML(entity, streamWriter, shouldWriteSOAPResponse ? URI_NS_SOAP_1_2_ENVELOPE : parentNamespace);
     if (shouldWriteSOAPResponse) {
       streamWriter.writeEndElement(); // Body
       streamWriter.writeEndElement(); // Envelope

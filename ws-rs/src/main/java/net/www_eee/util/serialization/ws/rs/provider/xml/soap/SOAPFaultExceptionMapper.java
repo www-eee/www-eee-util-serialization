@@ -11,6 +11,7 @@ import java.nio.charset.*;
 
 import javax.naming.*;
 import javax.naming.directory.*;
+import javax.xml.soap.*;
 
 import org.eclipse.jdt.annotation.*;
 
@@ -29,7 +30,7 @@ public class SOAPFaultExceptionMapper implements ExceptionMapper<Throwable> {
   /**
    * The {@link MediaType} Object for the <code>"application/soap+xml"</code> mime type.
    */
-  protected static final MediaType APPLICATION_SOAP_XML_MEDIA_TYPE = new MediaType("application", "soap+xml");
+  protected static final MediaType SOAP_1_2_CONTENT_TYPE = MediaType.valueOf(SOAPConstants.SOAP_1_2_CONTENT_TYPE);
 
   protected Response.StatusType getStatus(final Throwable throwable) {
     if (throwable instanceof NameNotFoundException) {
@@ -47,7 +48,7 @@ public class SOAPFaultExceptionMapper implements ExceptionMapper<Throwable> {
   @Override
   public Response toResponse(final Throwable throwable) {
     final Response.StatusType status = getStatus(throwable);
-    return Response.status(status).encoding(UTF_8_CHARSET.name()).type(APPLICATION_SOAP_XML_MEDIA_TYPE).entity(XMLSerializable.createSOAPFaultWrapper(throwable, status.getStatusCode() < 500)).build();
+    return Response.status(status).encoding(UTF_8_CHARSET.name()).type(SOAP_1_2_CONTENT_TYPE).entity(XMLSerializable.createSOAPFaultWrapper(throwable, status.getStatusCode() < 500)).build();
   }
 
 }

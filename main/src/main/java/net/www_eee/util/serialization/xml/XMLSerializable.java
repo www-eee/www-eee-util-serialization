@@ -12,6 +12,7 @@ import java.net.*;
 import java.util.*;
 
 import javax.xml.*;
+import javax.xml.soap.*;
 import javax.xml.stream.*;
 
 import org.eclipse.jdt.annotation.*;
@@ -63,7 +64,7 @@ public interface XMLSerializable {
 
   public static XMLSerializable createSOAPFaultWrapper(final Throwable exception, final boolean isSenderError) {
     class SOAPFaultWrapper implements XMLSerializable, Serializable {
-      private final URI soapNamespace = URI.create("http://www.w3.org/2003/05/soap-envelope");
+      private final URI soapNamespace = URI.create(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE);
       private final URI jaxwsNamespace = URI.create("http://jax-ws.dev.java.net/");
 
       private void writeJAXWSException(final Throwable exception, final XMLStreamWriter streamWriter, final String rootName, final @Nullable URI parentNamespace) throws XMLStreamException {
@@ -106,7 +107,7 @@ public interface XMLSerializable {
 
         streamWriter.writeStartElement(XMLConstants.DEFAULT_NS_PREFIX, "Code", soapNamespace.toString());
         streamWriter.writeStartElement(XMLConstants.DEFAULT_NS_PREFIX, "Value", soapNamespace.toString());
-        streamWriter.writeCharacters(isSenderError ? "env:Sender" : "env:Receiver");
+        streamWriter.writeCharacters((isSenderError ? (SOAPConstants.SOAP_SENDER_FAULT.getPrefix() + ':' + SOAPConstants.SOAP_SENDER_FAULT.getLocalPart()) : (SOAPConstants.SOAP_RECEIVER_FAULT.getPrefix() + ':' + SOAPConstants.SOAP_RECEIVER_FAULT.getLocalPart())));
         streamWriter.writeEndElement();
         streamWriter.writeEndElement();
 
