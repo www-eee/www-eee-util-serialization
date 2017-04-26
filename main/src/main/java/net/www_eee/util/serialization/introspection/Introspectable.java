@@ -93,6 +93,11 @@ public interface Introspectable extends XMLSerializable {
     }
 
     @Override
+    public boolean equals(final @Nullable Object other) {
+      return Optional.ofNullable(other).filter(Info.class::isInstance).map(Info.class::cast).filter((i) -> type.equals(i.type)).filter((i) -> Objects.equals(namespace, i.namespace)).filter((i) -> lateBound == i.lateBound).filter((i) -> props.equals(i.props)).isPresent();
+    }
+
+    @Override
     public void writeXML(final XMLStreamWriter streamWriter, final @Nullable URI parentNamespace) throws XMLStreamException {
       final String nsString = Optional.ofNullable(getNamespace()).map(URI::toString).orElse(XMLConstants.NULL_NS_URI);
 
