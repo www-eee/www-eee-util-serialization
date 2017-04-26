@@ -59,7 +59,11 @@ public class SOAPStreamParserTest {
     thrown.expectMessage("Server went boom.");
 
     final URL testURL = SOAPStreamParserTest.class.getResource("/net/www_eee/util/serialization/parser/xml/soap/departures_global_fault.xml");
-    DEPARTURE_STREAM_PARSER.parse(testURL.openStream());
+    try {
+      DEPARTURE_STREAM_PARSER.parse(testURL.openStream());
+    } catch (SOAPStreamParser.ElementValueParsingException evpe) {
+      throw evpe.getCause();
+    }
     return;
   }
 
@@ -72,10 +76,14 @@ public class SOAPStreamParserTest {
     thrown.expectMessage("Invalid departure record.");
 
     final URL testURL = SOAPStreamParserTest.class.getResource("/net/www_eee/util/serialization/parser/xml/soap/departures_local_fault.xml");
-    final Iterator<Departure> departures = DEPARTURE_STREAM_PARSER.parse(testURL.openStream()).iterator();
-    assertEquals("Canada[2001-01-01]", departures.next().toString());
-    assertEquals("USA[2001-02-01]", departures.next().toString());
-    departures.next().toString();
+    try {
+      final Iterator<Departure> departures = DEPARTURE_STREAM_PARSER.parse(testURL.openStream()).iterator();
+      assertEquals("Canada[2001-01-01]", departures.next().toString());
+      assertEquals("USA[2001-02-01]", departures.next().toString());
+      departures.next().toString();
+    } catch (SOAPStreamParser.ElementValueParsingException evpe) {
+      throw evpe.getCause();
+    }
     return;
   }
 
@@ -91,7 +99,7 @@ public class SOAPStreamParserTest {
     try {
       departures.next().toString();
       fail("Expected SOAPFaultException");
-    } catch (SOAPFaultException sfe) {}
+    } catch (SOAPStreamParser.ElementValueParsingException evpe) {}
     assertEquals("Australia[2001-03-01]", departures.next().toString());
 
     return;
