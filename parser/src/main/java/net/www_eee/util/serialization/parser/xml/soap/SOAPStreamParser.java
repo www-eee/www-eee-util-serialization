@@ -47,10 +47,10 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
   private static final WrapperElementParser<QName> CODE_ELEMENT = new WrapperElementParser<>(CODE_QNAME, VALUE_ELEMENT);
   protected static final StringElementParser TEXT_ELEMENT = new StringElementParser(TEXT_QNAME, false);
   private static final WrapperElementParser<String> REASON_ELEMENT = new WrapperElementParser<>(REASON_QNAME, TEXT_ELEMENT);
-  protected static final ElementParser<SOAPFaultException> FAULT_ELEMENT = new ElementParser<>(SOAPFaultException.class, FAULT_QNAME, (context) -> {
+  protected static final ElementParser<SOAPFaultException> FAULT_ELEMENT = new ElementParser<>(SOAPFaultException.class, FAULT_QNAME, (ctx) -> {
     final SOAPFault fault;
     try {
-      fault = SOAP_FACTORY.createFault(cast(context).getFirstChildValue(REASON_ELEMENT), cast(context).getFirstChildValue(CODE_ELEMENT));
+      fault = SOAP_FACTORY.createFault(cast(ctx).child(REASON_ELEMENT), cast(ctx).child(CODE_ELEMENT));
     } catch (SOAPException soape) {
       throw new RuntimeException(soape);
     }
@@ -63,7 +63,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
   }
 
   @SuppressWarnings("unchecked")
-  public static <@NonNull T> SchemaBuilder<T,? extends SchemaBuilder<T,?>> buildSchema(final Class<T> targetClass, final @Nullable URI namespace) {
+  public static <@NonNull T> SchemaBuilder<T,? extends SchemaBuilder<T,?>> create(final Class<T> targetClass, final @Nullable URI namespace) {
     return new SchemaBuilder<T,SchemaBuilder<T,?>>(targetClass, (Class<SchemaBuilder<T,?>>)(Object)SchemaBuilder.class, namespace, null);
   }
 
@@ -133,16 +133,16 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
     }
 
     @Override
-    public SOAPStreamParser<T> build(final QName documentElementName, final QName targetElementName) throws NoSuchElementException, ClassCastException {
+    public SOAPStreamParser<T> parser(final QName documentElementName, final QName targetElementName) throws NoSuchElementException, ClassCastException {
       return new SOAPStreamParser<T>(targetClass, elementParsers.values(), targetElementName);
     }
 
-    public SOAPStreamParser<T> build(final QName targetElementName) throws NoSuchElementException, ClassCastException {
+    public SOAPStreamParser<T> parser(final QName targetElementName) throws NoSuchElementException, ClassCastException {
       return new SOAPStreamParser<T>(targetClass, elementParsers.values(), targetElementName);
     }
 
-    public SOAPStreamParser<T> build(final String targetElementName) throws NoSuchElementException, ClassCastException {
-      return build(qn(targetElementName));
+    public SOAPStreamParser<T> parser(final String targetElementName) throws NoSuchElementException, ClassCastException {
+      return parser(qn(targetElementName));
     }
 
   } // SchemaBuilder

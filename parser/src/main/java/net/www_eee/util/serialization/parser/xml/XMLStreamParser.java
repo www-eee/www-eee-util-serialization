@@ -23,9 +23,9 @@ import org.eclipse.jdt.annotation.*;
 
 
 /**
- * You {@linkplain #buildSchema(Class, URI) build} a set of parsers you wish to capture from an
- * {@linkplain XMLEventReader XML event stream} and this class provides a {@link Stream} implementation which will
- * read/parse/construct them dynamically as they are retrieved.
+ * You {@linkplain #create(Class, URI) create} a set of parsers you wish to capture from an {@linkplain XMLEventReader
+ * XML event stream}, and this class provides a {@link Stream} implementation which will read/parse/construct them
+ * dynamically as they are retrieved.
  *
  * @param <T> The type of target objects to be streamed.
  */
@@ -90,13 +90,13 @@ public class XMLStreamParser<@NonNull T> {
   }
 
   @SuppressWarnings("unchecked")
-  public static <@NonNull T> SchemaBuilder<T,? extends SchemaBuilder<T,?>> buildSchema(final Class<T> targetClass, final @Nullable URI namespace) {
+  public static <@NonNull T> SchemaBuilder<T,? extends SchemaBuilder<T,?>> create(final Class<T> targetClass, final @Nullable URI namespace) {
     return new SchemaBuilder<T,SchemaBuilder<T,?>>(targetClass, (Class<SchemaBuilder<T,?>>)(Object)SchemaBuilder.class, namespace, null);
   }
 
   @SuppressWarnings("unchecked")
-  protected static final <@NonNull T> ElementParser<T>.ParsingContextImpl cast(final ElementParsingContext<T> context) {
-    return (ElementParser<T>.ParsingContextImpl)(Object)context;
+  protected static final <@NonNull T> ElementParser<T>.ParsingContextImpl cast(final ElementParsingContext<T> ctx) {
+    return (ElementParser<T>.ParsingContextImpl)(Object)ctx;
   }
 
   /**
@@ -105,48 +105,108 @@ public class XMLStreamParser<@NonNull T> {
    */
   public interface ElementParsingContext<@NonNull T> {
 
-    public Class<T> getElementType();
+    public Class<T> type();
 
-    public QName getElementName();
+    public QName name();
 
-    public StartElement getStartElement();
-
-    public Deque<StartElement> getElementContext();
-
-    public <@NonNull S> Optional<S> getSavedValueOpt(final QName name, final Class<S> valueClass);
-
-    public default <@NonNull S> Optional<S> getSavedValueOpt(final String localName, final Class<S> valueClass) {
-      return getSavedValueOpt(new QName(getElementName().getNamespaceURI(), localName), valueClass);
+    public default String ns() {
+      return name().getNamespaceURI();
     }
 
-    public default <@NonNull S> S getSavedValue(final QName name, final Class<S> valueClass) {
-      return getSavedValueOpt(name, valueClass).orElseThrow(() -> new NoSuchElementException(name.toString()));
+    public StartElement event();
+
+    @SuppressWarnings("unchecked")
+    public default Map<String,String> attrs() {
+      return Collections.unmodifiableMap(StreamSupport.stream(Spliterators.spliteratorUnknownSize((Iterator<Attribute>)event().getAttributes(), Spliterator.NONNULL | Spliterator.DISTINCT | Spliterator.IMMUTABLE), false).map((attr) -> new AbstractMap.SimpleImmutableEntry<>(attr.getName().getLocalPart(), attr.getValue())).collect(Collectors.<Map.Entry<String,String>,String,String> toMap(Map.Entry::getKey, Map.Entry::getValue)));
     }
 
-    public default <@NonNull S> S getSavedValue(final String localName, final Class<S> valueClass) {
-      return getSavedValue(new QName(getElementName().getNamespaceURI(), localName), valueClass);
+    public default @Nullable String attrNull(final QName name) {
+      final @Nullable Attribute attr = event().getAttributeByName(name);
+      return (attr != null) ? attr.getValue() : null;
     }
 
-    public <@NonNull ET> Stream<ET> getChildValues(final QName name, final Class<ET> valueClass);
-
-    public default <@NonNull ET> Stream<ET> getChildValues(final String localName, final Class<ET> valueClass) {
-      return getChildValues(new QName(getElementName().getNamespaceURI(), localName), valueClass);
+    public default <A> @Nullable A attrNull(final QName name, final Function<? super String,? extends A> targetFunction) {
+      final @Nullable String attr = attrNull(name);
+      return (attr != null) ? targetFunction.apply(attr) : null;
     }
 
-    public default <@NonNull ET> Optional<ET> getFirstChildValueOpt(final QName name, final Class<ET> valueClass) {
-      return getChildValues(name, valueClass).findFirst();
+    public default @Nullable String attrNull(final String localName) {
+      return attrNull(new QName(XMLConstants.NULL_NS_URI, localName));
     }
 
-    public default <@NonNull ET> Optional<ET> getFirstChildValueOpt(final String localName, final Class<ET> valueClass) {
-      return getFirstChildValueOpt(new QName(getElementName().getNamespaceURI(), localName), valueClass);
+    public default <A> @Nullable A attrNull(final String localName, final Function<? super String,? extends A> targetFunction) {
+      final @Nullable String attr = attrNull(localName);
+      return (attr != null) ? targetFunction.apply(attr) : null;
     }
 
-    public default <@NonNull ET> ET getFirstChildValue(final QName name, final Class<ET> valueClass) {
-      return getFirstChildValueOpt(name, valueClass).orElseThrow(() -> new NoSuchElementException(name.toString()));
+    public default Optional<String> attrOpt(final QName name) {
+      return Optional.ofNullable(event().getAttributeByName(name)).map(Attribute::getValue);
     }
 
-    public default <@NonNull ET> ET getFirstChildValue(final String localName, final Class<ET> valueClass) {
-      return getFirstChildValue(new QName(getElementName().getNamespaceURI(), localName), valueClass);
+    public default <A> Optional<A> attrOpt(final QName name, final Function<? super String,? extends A> targetFunction) {
+      return attrOpt(name).map(targetFunction);
+    }
+
+    public default Optional<String> attrOpt(final String localName) {
+      return attrOpt(new QName(XMLConstants.NULL_NS_URI, localName));
+    }
+
+    public default <A> Optional<A> attrOpt(final String localName, final Function<? super String,? extends A> targetFunction) {
+      return attrOpt(localName).map(targetFunction);
+    }
+
+    public default String attr(final QName name) throws NoSuchElementException {
+      return attrOpt(name).orElseThrow(() -> new NoSuchElementException("Element '" + name().getLocalPart() + "' has no '" + name.getLocalPart() + "' attribute"));
+    }
+
+    public default <A> A attr(final QName name, final Function<? super String,? extends A> targetFunction) throws NoSuchElementException {
+      return targetFunction.apply(attr(name));
+    }
+
+    public default String attr(final String localName) throws NoSuchElementException {
+      return attr(new QName(XMLConstants.NULL_NS_URI, localName));
+    }
+
+    public default <A> A attr(final String localName, final Function<? super String,? extends A> targetFunction) throws NoSuchElementException {
+      return targetFunction.apply(attr(localName));
+    }
+
+    public Deque<StartElement> eventStack();
+
+    public <@NonNull S> Optional<S> savedOpt(final QName name, final Class<S> valueClass);
+
+    public default <@NonNull S> Optional<S> savedOpt(final String localName, final Class<S> valueClass) {
+      return savedOpt(new QName(ns(), localName), valueClass);
+    }
+
+    public default <@NonNull S> S saved(final QName name, final Class<S> valueClass) throws NoSuchElementException {
+      return savedOpt(name, valueClass).orElseThrow(() -> new NoSuchElementException("No '" + name.getLocalPart() + "' element (with '" + valueClass.getSimpleName() + "' value) found"));
+    }
+
+    public default <@NonNull S> S saved(final String localName, final Class<S> valueClass) throws NoSuchElementException {
+      return saved(new QName(ns(), localName), valueClass);
+    }
+
+    public <@NonNull ET> Stream<ET> children(final QName name, final Class<ET> valueClass);
+
+    public default <@NonNull ET> Stream<ET> children(final String localName, final Class<ET> valueClass) {
+      return children(new QName(ns(), localName), valueClass);
+    }
+
+    public default <@NonNull ET> Optional<ET> childOpt(final QName name, final Class<ET> valueClass) {
+      return children(name, valueClass).findFirst();
+    }
+
+    public default <@NonNull ET> Optional<ET> childOpt(final String localName, final Class<ET> valueClass) {
+      return childOpt(new QName(ns(), localName), valueClass);
+    }
+
+    public default <@NonNull ET> ET child(final QName name, final Class<ET> valueClass) throws NoSuchElementException {
+      return childOpt(name, valueClass).orElseThrow(() -> new NoSuchElementException("No '" + name.getLocalPart() + "' element (with '" + valueClass.getSimpleName() + "' value) found"));
+    }
+
+    public default <@NonNull ET> ET child(final String localName, final Class<ET> valueClass) throws NoSuchElementException {
+      return child(new QName(ns(), localName), valueClass);
     }
 
   } // ElementParsingContext
@@ -379,17 +439,17 @@ public class XMLStreamParser<@NonNull T> {
       }
 
       @Override
-      public Class<T> getElementType() {
+      public Class<T> type() {
         return targetClass;
       }
 
       @Override
-      public final QName getElementName() {
+      public final QName name() {
         return elementName;
       }
 
       @Override
-      public StartElement getStartElement() {
+      public StartElement event() {
         return startElement;
       }
 
@@ -406,7 +466,7 @@ public class XMLStreamParser<@NonNull T> {
       }
 
       @Override
-      public Deque<StartElement> getElementContext() {
+      public Deque<StartElement> eventStack() {
         return getElementContextImpl(new ArrayDeque<>(getDepth() + 1));
       }
 
@@ -435,34 +495,34 @@ public class XMLStreamParser<@NonNull T> {
         return (oldValue != null) ? Optional.of(ElementParser.this.targetClass.cast(oldValue)) : Optional.empty();
       }
 
-      public <@NonNull S> Optional<S> getSavedValueOpt(final ElementParser<S> parser) {
+      public <@NonNull S> Optional<S> savedOpt(final ElementParser<S> parser) {
         final Object value = savedValues.get(parser);
         return (value != null) ? Optional.of(parser.targetClass.cast(value)) : Optional.empty();
       }
 
-      public <@NonNull S> S getSavedValue(final ElementParser<S> parser) throws NoSuchElementException {
-        return getSavedValueOpt(parser).orElseThrow(() -> new NoSuchElementException(ElementParser.this.toString()));
+      public <@NonNull S> S saved(final ElementParser<S> parser) throws NoSuchElementException {
+        return savedOpt(parser).orElseThrow(() -> new NoSuchElementException(ElementParser.this.toString()));
       }
 
-      public <@NonNull ET> Optional<ET> getFirstChildValueOpt(final ContentParser<?,ET> parser) throws NoSuchElementException {
-        return getChildValues(parser).findFirst();
+      public <@NonNull ET> Optional<ET> childOpt(final ContentParser<?,ET> parser) {
+        return children(parser).findFirst();
       }
 
-      public <@NonNull ET> ET getFirstChildValue(final ContentParser<?,ET> parser) throws NoSuchElementException {
-        return getFirstChildValueOpt(parser).orElseThrow(() -> new NoSuchElementException(parser.toString()));
+      public <@NonNull ET> ET child(final ContentParser<?,ET> parser) throws NoSuchElementException {
+        return childOpt(parser).orElseThrow(() -> new NoSuchElementException(parser.toString()));
       }
 
       @Override
-      public <@NonNull S> Optional<S> getSavedValueOpt(final QName name, final Class<S> valueClass) {
+      public <@NonNull S> Optional<S> savedOpt(final QName name, final Class<S> valueClass) {
         return getElements(savedValues.entrySet().stream(), name, valueClass).map(Map.Entry::getValue).findAny();
       }
 
-      public <@NonNull ET> Stream<ET> getChildValues(final ContentParser<?,ET> parser) {
+      public <@NonNull ET> Stream<ET> children(final ContentParser<?,ET> parser) {
         return childValues.stream().filter((entry) -> entry.getKey() == parser).map(Map.Entry::getValue).map((v) -> parser.getTargetClass().cast(v));
       }
 
       @Override
-      public <@NonNull ET> Stream<ET> getChildValues(final QName name, final Class<ET> valueClass) {
+      public <@NonNull ET> Stream<ET> children(final QName name, final Class<ET> valueClass) {
         return getElements(childValues.stream(), name, valueClass).map(Map.Entry::getValue);
       }
 
@@ -473,7 +533,7 @@ public class XMLStreamParser<@NonNull T> {
   protected static class ContainerElementParser extends ElementParser<StartElement> {
 
     public ContainerElementParser(final QName name, final @NonNull ContentParser<?,?>... childParsers) {
-      super(StartElement.class, name, (context) -> context.getStartElement(), false, childParsers);
+      super(StartElement.class, name, (context) -> context.event(), false, childParsers);
       return;
     }
 
@@ -482,7 +542,7 @@ public class XMLStreamParser<@NonNull T> {
   protected static class WrapperElementParser<@NonNull T> extends ElementParser<T> {
 
     public WrapperElementParser(final QName name, final ElementParser<T> wrappedElement) {
-      super(wrappedElement.targetClass, name, (context) -> cast(context).getFirstChildValue(wrappedElement), false, wrappedElement);
+      super(wrappedElement.targetClass, name, (ctx) -> cast(ctx).child(wrappedElement), false, wrappedElement);
       return;
     }
 
@@ -492,7 +552,7 @@ public class XMLStreamParser<@NonNull T> {
     private static final CharactersParser CHARACTERS_PARSER = new CharactersParser(true, true, false);
 
     public TextElementParser(final Class<T> targetClass, final QName name, final Function<? super String,? extends T> targetFunction, final boolean saveTargetValue) {
-      super(targetClass, name, (context) -> targetFunction.apply(cast(context).getChildValues(CHARACTERS_PARSER).collect(Collectors.joining())), saveTargetValue, CHARACTERS_PARSER);
+      super(targetClass, name, (ctx) -> targetFunction.apply(cast(ctx).children(CHARACTERS_PARSER).collect(Collectors.joining())), saveTargetValue, CHARACTERS_PARSER);
       return;
     }
 
@@ -542,13 +602,13 @@ public class XMLStreamParser<@NonNull T> {
     }
 
     protected SB add(final ElementParser<?> elementParser) {
-      if (elementParsers.containsKey(elementParser.getElementName())) throw new IllegalArgumentException("Attempt to add parser '" + elementParser.getElementName() + "' twice");
+      if (elementParsers.containsKey(elementParser.getElementName())) throw new IllegalArgumentException("Attempt to add duplicate '" + elementParser.getElementName() + "' parser");
       elementParsers.put(elementParser.getElementName(), elementParser);
       return builderType.cast(this);
     }
 
     protected final <E extends ElementParser<?>> E getParser(final Class<E> type, final QName name) throws NoSuchElementException, ClassCastException {
-      return type.cast(Optional.ofNullable(elementParsers.get(name)).orElseThrow(() -> new NoSuchElementException("No such parser '" + name + "'")));
+      return type.cast(Optional.ofNullable(elementParsers.get(name)).orElseThrow(() -> new NoSuchElementException("No '" + name + "' parser found")));
     }
 
     protected final <E extends ElementParser<?>> E getParser(final Class<E> type, final String localName) throws NoSuchElementException, ClassCastException {
@@ -595,12 +655,12 @@ public class XMLStreamParser<@NonNull T> {
       return string(localName, false);
     }
 
-    public XMLStreamParser<T> build(final QName documentElementName, final QName targetElementName) throws NoSuchElementException, ClassCastException {
+    public XMLStreamParser<T> parser(final QName documentElementName, final QName targetElementName) throws NoSuchElementException, ClassCastException {
       return new XMLStreamParser<T>(targetClass, elementParsers.values(), documentElementName, targetElementName);
     }
 
-    public XMLStreamParser<T> build(final String documentParserName, final String targetParserName) throws NoSuchElementException, ClassCastException {
-      return build(qn(documentParserName), qn(targetParserName));
+    public XMLStreamParser<T> parser(final String documentParserName, final String targetParserName) throws NoSuchElementException, ClassCastException {
+      return parser(qn(documentParserName), qn(targetParserName));
     }
 
   } // SchemaBuilder
