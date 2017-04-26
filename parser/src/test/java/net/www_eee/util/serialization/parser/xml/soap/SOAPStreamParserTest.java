@@ -12,7 +12,6 @@ import java.time.*;
 import java.util.*;
 import java.util.stream.*;
 
-import javax.xml.namespace.*;
 import javax.xml.ws.soap.*;
 
 import org.eclipse.jdt.annotation.*;
@@ -30,18 +29,13 @@ import static org.junit.Assert.*;
 public class SOAPStreamParserTest {
   @Rule
   public ExpectedException thrown = ExpectedException.none();
-  protected static final URI TEST_NS_URI = URI.create("http://www_eee.net/ns/"); // Something random and short.
   public static final SOAPStreamParser<Departure> DEPARTURE_STREAM_PARSER;
   static {
-    final SOAPStreamParser.TextElement<Year> departureYear = new SOAPStreamParser.TextElement<>(Year.class, new QName(TEST_NS_URI.toString(), "departureYear"), Year::parse, true);
-    final SOAPStreamParser.HeaderElement header = new SOAPStreamParser.HeaderElement(departureYear);
-    final SOAPStreamParser.StringElement departing = new SOAPStreamParser.StringElement(new QName(TEST_NS_URI.toString(), "departing"), false);
-    final SOAPStreamParser.TextElement<MonthDay> departureMonthDay = new SOAPStreamParser.TextElement<>(MonthDay.class, new QName(TEST_NS_URI.toString(), "departureMonthDay"), MonthDay::parse, false);
-    final SOAPStreamParser.Element<Departure> departure = new SOAPStreamParser.Element<>(Departure.class, new QName(TEST_NS_URI.toString(), "departure"), (state, children) -> new Departure(SOAPStreamParser.firstValue(children, departing), SOAPStreamParser.firstValue(children, departureMonthDay).atYear(state.getValue(departureYear).getValue())), false, departing, departureMonthDay);
-    final SOAPStreamParser.ContainerElement departures = new SOAPStreamParser.ContainerElement(new QName(TEST_NS_URI.toString(), "departures"), departure, SOAPStreamParser.FAULT_ELEMENT);
-    final SOAPStreamParser.BodyElement body = new SOAPStreamParser.BodyElement(departures);
-    final SOAPStreamParser.EnvelopeElement envelope = new SOAPStreamParser.EnvelopeElement(header, body);
-    DEPARTURE_STREAM_PARSER = new SOAPStreamParser<Departure>(envelope, departure);
+    final SOAPStreamParser.SchemaBuilder<Departure,? extends SOAPStreamParser.SchemaBuilder<Departure,?>> builder = SOAPStreamParser.buildSchema(Departure.class, URI.create("http://www_eee.net/ns/"));
+    builder.text("departureYear", Year.class, Year::parse, true).header("departureYear").string("departing").text("departureMonthDay", MonthDay.class, MonthDay::parse);
+    builder.element("departure", Departure.class, (context) -> new Departure(context.getFirstChildValue("departing", String.class), context.getFirstChildValue("departureMonthDay", MonthDay.class).atYear(context.getSavedValue("departureYear", Year.class).getValue())), false, "departing", "departureMonthDay");
+    builder.container("departures", builder.qn("departure"), SOAPStreamParser.FAULT_QNAME).body("departures");
+    DEPARTURE_STREAM_PARSER = builder.envelope(true).build("departure");
   }
 
   /**
@@ -50,6 +44,7 @@ public class SOAPStreamParserTest {
   @Test
   public void testIgnoreExtra() throws Exception {
     final URL testURL = SOAPStreamParserTest.class.getResource("/net/www_eee/util/serialization/parser/xml/soap/departures_ignore_extra.xml");
+    System.err.println(DEPARTURE_STREAM_PARSER.parse(testURL.openStream()).collect(Collectors.toList()));
     final Stream<Departure> departures = DEPARTURE_STREAM_PARSER.parse(testURL.openStream());
     assertEquals("Canada[2001-01-01],USA[2001-02-01],Australia[2001-03-01]", departures.map(Object::toString).collect(Collectors.joining(",")));
     return;

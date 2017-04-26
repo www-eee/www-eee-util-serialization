@@ -8,11 +8,13 @@
 package net.www_eee.util.serialization.parser.xml;
 
 import java.io.*;
+import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.stream.*;
 
+import javax.xml.*;
 import javax.xml.namespace.*;
 import javax.xml.stream.*;
 import javax.xml.stream.events.*;
@@ -21,35 +23,42 @@ import org.eclipse.jdt.annotation.*;
 
 
 /**
- * You supply a tree of {@linkplain Parser parser} objects specifying the {@linkplain Element elements} you wish to
- * capture from an {@linkplain XMLEventReader XML event stream} and this class provides a {@link Stream} implementation
- * which will read/parse/construct them dynamically as they are retrieved.
+ * You {@linkplain #buildSchema(Class, URI) build} a set of parsers you wish to capture from an
+ * {@linkplain XMLEventReader XML event stream} and this class provides a {@link Stream} implementation which will
+ * read/parse/construct them dynamically as they are retrieved.
  *
  * @param <T> The type of target objects to be streamed.
  */
 @NonNullByDefault
 public class XMLStreamParser<@NonNull T> {
   private static final XMLInputFactory XML_INPUT_FACTORY = XMLInputFactory.newInstance();
-  private final Element<?> documentParser;
-  private final Element<T> targetParser;
+  protected final Map<QName,ElementParser<?>> elementParsers;
+  private final ElementParser<?> documentParser;
+  private final ElementParser<T> targetParser;
 
-  public XMLStreamParser(final Element<?> documentParser, final Element<T> targetParser) {
-    this.documentParser = documentParser;
-    this.targetParser = targetParser;
+  protected XMLStreamParser(final Class<T> targetClass, final Collection<ElementParser<?>> elementParsers, final QName documentElementName, final QName targetElementName) throws NoSuchElementException, ClassCastException {
+    Objects.requireNonNull(targetClass, "targetClass");
+    this.elementParsers = Collections.unmodifiableMap(new ConcurrentHashMap<>(Objects.requireNonNull(elementParsers, "null elementParsers").stream().collect(Collectors.<ElementParser<?>,QName,ElementParser<?>> toMap(ElementParser::getElementName, Function.identity()))));
+    this.documentParser = Optional.ofNullable(this.elementParsers.get(Objects.requireNonNull(documentElementName, "null documentElementName"))).orElseThrow(() -> new NoSuchElementException("No parser supplied for document element " + documentElementName));
+    final ElementParser<?> tp1 = Optional.ofNullable(this.elementParsers.get(Objects.requireNonNull(targetElementName, "null targetElementName"))).orElseThrow(() -> new NoSuchElementException("No parser supplied for target element " + targetElementName));
+    if (!targetClass.isAssignableFrom(tp1.getTargetClass())) throw new ClassCastException("Specified target parser results ('" + tp1.getTargetClass() + "') are incompatible with target class ('" + targetClass + "')");
+    @SuppressWarnings("unchecked")
+    final ElementParser<T> tp2 = (ElementParser<T>)tp1;
+    this.targetParser = tp2;
     return;
   }
 
   public Stream<T> parse(final InputStream inputStream) throws XMLStreamException {
     final XMLEventReader reader = XML_INPUT_FACTORY.createXMLEventReader(inputStream);
 
-    State initialState = null;
+    ElementParser<?>.ParsingContextImpl targetParentContext = null;
     try {
-      documentParser.parse(new State(), reader.nextTag(), reader, targetParser); // Read in events up until an element using the targetParser is encountered.
+      documentParser.parse(null, reader.nextTag(), reader, targetParser); // Read in events up until an element using the targetParser is encountered.
     } catch (TerminatingParserException tpe) {
-      initialState = tpe.getState();
+      targetParentContext = tpe.getParsingContext();
     }
 
-    return (initialState != null) ? StreamSupport.stream(new TargetSpliterator(initialState, reader), false) : Stream.empty();
+    return (targetParentContext != null) ? StreamSupport.stream(new TargetSpliterator(targetParentContext, reader), false) : Stream.empty();
   }
 
   /**
@@ -80,88 +89,76 @@ public class XMLStreamParser<@NonNull T> {
     return;
   }
 
-  public static final <@NonNull T> Stream<T> filter(final List<Map.Entry<Parser<?,?>,?>> children, final Parser<?,T> parser) {
-    return children.stream().filter((entry) -> entry.getKey() == parser).map(Map.Entry::getValue).map((v) -> parser.getTargetClass().cast(v));
+  @SuppressWarnings("unchecked")
+  public static <@NonNull T> SchemaBuilder<T,? extends SchemaBuilder<T,?>> buildSchema(final Class<T> targetClass, final @Nullable URI namespace) {
+    return new SchemaBuilder<T,SchemaBuilder<T,?>>(targetClass, (Class<SchemaBuilder<T,?>>)(Object)SchemaBuilder.class, namespace, null);
   }
 
-  public static final <@NonNull T> Optional<T> findFirst(final List<Map.Entry<Parser<?,?>,?>> children, final Parser<?,T> parser) {
-    return filter(children, parser).findFirst();
+  @SuppressWarnings("unchecked")
+  protected static final <@NonNull T> ElementParser<T>.ParsingContextImpl cast(final ElementParsingContext<T> context) {
+    return (ElementParser<T>.ParsingContextImpl)(Object)context;
   }
 
-  public static final <@NonNull T> T firstValue(final List<Map.Entry<Parser<?,?>,?>> children, final Parser<?,T> parser) throws NoSuchElementException {
-    return findFirst(children, parser).orElseThrow(() -> new NoSuchElementException(parser.toString()));
-  }
+  /**
+   * An implementation of this interface is the sole parameter to a {@link Function} you supply for translating element
+   * content into target objects.
+   */
+  public interface ElementParsingContext<@NonNull T> {
 
-  public static final class State {
-    private final Map<Parser<?,?>,Object> values;
-    private final Stack<Map.Entry<Element<?>,StartElement>> context;
+    public Class<T> getElementType();
 
-    public State() {
-      values = new ConcurrentHashMap<Parser<?,?>,Object>();
-      context = new Stack<>();
-      return;
+    public QName getElementName();
+
+    public StartElement getStartElement();
+
+    public Deque<StartElement> getElementContext();
+
+    public <@NonNull S> Optional<S> getSavedValueOpt(final QName name, final Class<S> valueClass);
+
+    public default <@NonNull S> Optional<S> getSavedValueOpt(final String localName, final Class<S> valueClass) {
+      return getSavedValueOpt(new QName(getElementName().getNamespaceURI(), localName), valueClass);
     }
 
-    public State(final State other) {
-      values = new ConcurrentHashMap<Parser<?,?>,Object>(other.values);
-      context = new Stack<>();
-      context.addAll(other.context);
-      return;
+    public default <@NonNull S> S getSavedValue(final QName name, final Class<S> valueClass) {
+      return getSavedValueOpt(name, valueClass).orElseThrow(() -> new NoSuchElementException(name.toString()));
     }
 
-    public <@NonNull T> Optional<T> setValue(final Parser<?,T> parser, final T value) {
-      final Object oldValue = values.put(parser, value);
-      return (oldValue != null) ? Optional.of(parser.targetClass.cast(oldValue)) : Optional.empty();
+    public default <@NonNull S> S getSavedValue(final String localName, final Class<S> valueClass) {
+      return getSavedValue(new QName(getElementName().getNamespaceURI(), localName), valueClass);
     }
 
-    public <@NonNull T> Optional<T> getValueOpt(final Parser<?,T> parser) {
-      final Object value = values.get(parser);
-      return (value != null) ? Optional.of(parser.targetClass.cast(value)) : Optional.empty();
+    public <@NonNull ET> Stream<ET> getChildValues(final QName name, final Class<ET> valueClass);
+
+    public default <@NonNull ET> Stream<ET> getChildValues(final String localName, final Class<ET> valueClass) {
+      return getChildValues(new QName(getElementName().getNamespaceURI(), localName), valueClass);
     }
 
-    public <@NonNull T> T getValue(final Parser<?,T> parser) throws NoSuchElementException {
-      return getValueOpt(parser).orElseThrow(() -> new NoSuchElementException(parser.toString()));
+    public default <@NonNull ET> Optional<ET> getFirstChildValueOpt(final QName name, final Class<ET> valueClass) {
+      return getChildValues(name, valueClass).findFirst();
     }
 
-    public synchronized void pushContext(final Element<?> parser, final StartElement element) {
-      context.push(new AbstractMap.SimpleImmutableEntry<>(parser, element));
-      return;
+    public default <@NonNull ET> Optional<ET> getFirstChildValueOpt(final String localName, final Class<ET> valueClass) {
+      return getFirstChildValueOpt(new QName(getElementName().getNamespaceURI(), localName), valueClass);
     }
 
-    public synchronized void popContext() throws IllegalStateException {
-      try {
-        context.pop();
-      } catch (EmptyStackException ese) {
-        throw new IllegalStateException(ese);
-      }
-      return;
+    public default <@NonNull ET> ET getFirstChildValue(final QName name, final Class<ET> valueClass) {
+      return getFirstChildValueOpt(name, valueClass).orElseThrow(() -> new NoSuchElementException(name.toString()));
     }
 
-    public synchronized Element<?> currentParser() throws IllegalStateException {
-      return Optional.ofNullable((!context.isEmpty()) ? context.peek().getKey() : null).orElseThrow(() -> new IllegalStateException("No current parser"));
+    public default <@NonNull ET> ET getFirstChildValue(final String localName, final Class<ET> valueClass) {
+      return getFirstChildValue(new QName(getElementName().getNamespaceURI(), localName), valueClass);
     }
 
-    public synchronized StartElement currentElement() throws IllegalStateException {
-      return Optional.ofNullable((!context.isEmpty()) ? context.peek().getValue() : null).orElseThrow(() -> new IllegalStateException("No current element"));
-    }
-
-    public synchronized Optional<StartElement> getElement(final Element<?> parser) {
-      for (Map.Entry<Element<?>,StartElement> c : context) {
-        if (c.getKey() == parser) return Optional.of(c.getValue());
-      }
-      return Optional.empty();
-    }
-
-  } // State
+  } // ElementParsingContext
 
   private final class TargetSpliterator implements Spliterator<T> {
     private final int CHARACTERISTICS = 0 | Spliterator.ORDERED | Spliterator.DISTINCT | Spliterator.NONNULL | Spliterator.IMMUTABLE;
-    private final State state;
+    private final ElementParser<?>.ParsingContextImpl parentContext;
     private final XMLEventReader reader;
 
-    public TargetSpliterator(final State state, final XMLEventReader reader) throws IllegalArgumentException {
-      if (!state.currentParser().getChildParsers().contains(targetParser)) throw new IllegalStateException("Current parser not parent of target parser");
-      this.state = state;
+    public TargetSpliterator(final ElementParser<?>.ParsingContextImpl parentContext, final XMLEventReader reader) throws IllegalArgumentException {
+      if (!((ElementParser<?>)parentContext.getParser()).getChildParsers().contains(targetParser)) throw new IllegalStateException("Current parser not parent of target parser");
+      this.parentContext = parentContext;
       this.reader = reader;
       return;
     }
@@ -193,19 +190,19 @@ public class XMLStreamParser<@NonNull T> {
             return false;
           }
 
-          final Optional<Parser<?,?>> parser = state.currentParser().findChildParserFor(event);
+          final Optional<ContentParser<?,?>> parser = ((ElementParser<?>)parentContext.getParser()).findChildParserFor(event);
           if (parser.isPresent()) {
             if (parser.get() == targetParser) { // There could be some other content before the next applicable target event.
               targetEvent = event;
             } else { // If they supplied a parser for this, so use it.
-              parser.get().parse(state, event, reader, null);
+              parser.get().parse(parentContext, event, reader, null);
             }
           } else {
             ignoreEvent(event, reader);
           }
         }
         if (targetEvent == null) return false;
-        action.accept(targetParser.parse(state, targetEvent, reader, null));
+        action.accept(targetParser.parse(parentContext, targetEvent, reader, null));
         return true;
       } catch (XMLStreamException xmlse) {
         try {
@@ -218,41 +215,40 @@ public class XMLStreamParser<@NonNull T> {
   } // TargetSpliterator
 
   /**
-   * This exception is thrown to abort {@linkplain XMLStreamParser.Parser#parse(State,XMLEvent,XMLEventReader,Element)
-   * parsing} and return the current {@link #getState() State} when the specified {@link XMLStreamParser.Element
-   * Element} parser is encountered.
+   * This exception is thrown to abort
+   * {@linkplain XMLStreamParser.ContentParser#parse(XMLStreamParser.ElementParser.ParsingContextImpl, XMLEvent, XMLEventReader, ElementParser)
+   * parsing} and return the current {@linkplain #getParsingContext() parsing context} when the specified
+   * {@linkplain XMLStreamParser.ElementParser element} encountered.
    */
   private static class TerminatingParserException extends RuntimeException {
-    protected final State state;
+    protected final ElementParser<?>.ParsingContextImpl context;
 
-    public TerminatingParserException(final State state) {
-      this.state = new State(state); // Copy the state, since the original context will be unwound as this exception propagates.
+    public TerminatingParserException(final ElementParser<?>.ParsingContextImpl context) {
+      this.context = context;
       return;
     }
 
-    public State getState() {
-      return state;
+    public ElementParser<?>.ParsingContextImpl getParsingContext() {
+      return context;
     }
 
   } // TerminatingParserException
 
-  public static abstract class Parser<E extends XMLEvent,@NonNull T> implements Serializable {
+  protected static abstract class ContentParser<E extends XMLEvent,@NonNull T> implements Serializable {
     protected final Class<E> eventClass;
     protected final Class<T> targetClass;
-    protected final boolean storeTargetValue;
 
-    protected Parser(final Class<E> eventClass, final Class<T> targetClass, final boolean storeTargetValue) {
+    protected ContentParser(final Class<E> eventClass, final Class<T> targetClass) {
       this.eventClass = eventClass;
       this.targetClass = targetClass;
-      this.storeTargetValue = storeTargetValue;
       return;
     }
 
-    public Class<E> getEventClass() {
+    public final Class<E> getEventClass() {
       return eventClass;
     }
 
-    public Class<T> getTargetClass() {
+    public final Class<T> getTargetClass() {
       return targetClass;
     }
 
@@ -265,7 +261,7 @@ public class XMLStreamParser<@NonNull T> {
      * content (e.g. all child nodes for a given element, up to and including it's end element), but <em>not</em>
      * consuming any subsequent events for nodes which are peers of the supplied event.
      * 
-     * @param state The state associated with parsing of the current document.
+     * @param parentContext The context associated with parsing of the current document.
      * @param event The event to be processed.
      * @param reader The reader to read any content from.
      * @param terminatingParser Throw a TerminatingParserException if an element using this parser is encountered.
@@ -273,23 +269,17 @@ public class XMLStreamParser<@NonNull T> {
      * @throws TerminatingParserException If an element using the terminatingParser was encountered.
      * @throws XMLStreamException If there was problem processing the event.
      */
-    protected abstract T parseImpl(final State state, final XMLEvent event, final XMLEventReader reader, final @Nullable Element<?> terminatingParser) throws TerminatingParserException, XMLStreamException;
+    protected abstract T parse(final ElementParser<?>.@Nullable ParsingContextImpl parentContext, final XMLEvent event, final XMLEventReader reader, final @Nullable ElementParser<?> terminatingParser) throws TerminatingParserException, XMLStreamException;
 
-    protected final T parse(final State state, final XMLEvent event, final XMLEventReader reader, final @Nullable Element<?> terminatingParser) throws TerminatingParserException, XMLStreamException {
-      final T value = parseImpl(state, event, reader, terminatingParser);
-      if (storeTargetValue) state.setValue(this, value);
-      return value;
-    }
+  } // ContentParser
 
-  } // Parser
-
-  public static class Text extends Parser<Characters,String> {
+  protected static class CharactersParser extends ContentParser<Characters,String> {
     private final boolean includeWhiteSpace;
     private final boolean includeCData;
     private final boolean includeIgnorableWhiteSpace;
 
-    public Text(final boolean includeWhiteSpace, final boolean includeCData, final boolean includeIgnorableWhiteSpace) {
-      super(Characters.class, String.class, false);
+    public CharactersParser(final boolean includeWhiteSpace, final boolean includeCData, final boolean includeIgnorableWhiteSpace) {
+      super(Characters.class, String.class);
       this.includeWhiteSpace = includeWhiteSpace;
       this.includeCData = includeCData;
       this.includeIgnorableWhiteSpace = includeIgnorableWhiteSpace;
@@ -304,132 +294,315 @@ public class XMLStreamParser<@NonNull T> {
     }
 
     @Override
-    protected final String parseImpl(final State state, final XMLEvent event, final XMLEventReader reader, final @Nullable Element<?> terminatingParser) throws XMLStreamException {
+    protected final String parse(final ElementParser<?>.@Nullable ParsingContextImpl parentContext, final XMLEvent event, final XMLEventReader reader, final @Nullable ElementParser<?> terminatingParser) throws XMLStreamException {
       return event.asCharacters().getData();
     }
 
-  } // Text
+  } // CharactersParser
 
-  public static class Element<@NonNull T> extends Parser<StartElement,T> {
-    protected final QName name;
-    private final BiFunction<State,List<Map.Entry<Parser<?,?>,?>>,T> targetFunction;
-    private final Set<Parser<?,?>> childParsers;
+  protected static class ElementParser<@NonNull T> extends ContentParser<StartElement,T> {
+    @SuppressWarnings("unchecked")
+    private static final Class<ElementParser<?>> WILDCARD_CLASS = (Class<ElementParser<?>>)(Object)ElementParser.class;
+    protected final QName elementName;
+    private final Function<ElementParsingContext<T>,T> targetFunction;
+    protected final boolean saveTargetValue;
+    private final Set<ContentParser<?,?>> childParsers;
 
-    public Element(final Class<T> targetClass, final QName name, final BiFunction<State,List<Map.Entry<Parser<?,?>,?>>,T> targetFunction, final boolean storeTargetValue, final Collection<Parser<?,?>> childParsers) {
-      super(StartElement.class, targetClass, storeTargetValue);
-      this.name = name;
+    public ElementParser(final Class<T> targetClass, final QName elementName, final Function<ElementParsingContext<T>,T> targetFunction, final boolean saveTargetValue, final @NonNull ContentParser<?,?>... childParsers) {
+      super(StartElement.class, targetClass);
+      this.elementName = elementName;
       this.targetFunction = targetFunction;
-      this.childParsers = Collections.unmodifiableSet(new CopyOnWriteArraySet<>(childParsers));
+      this.saveTargetValue = saveTargetValue;
+      this.childParsers = (childParsers != null) ? Collections.unmodifiableSet(new CopyOnWriteArraySet<>(Arrays.asList(childParsers))) : Collections.emptySet();
       return;
     }
 
-    public Element(final Class<T> targetClass, final QName name, final BiFunction<State,List<Map.Entry<Parser<?,?>,?>>,T> targetFunction, final boolean storeTargetValue, final @NonNull Parser<?,?>... childParsers) {
-      this(targetClass, name, targetFunction, storeTargetValue, (childParsers != null) ? Arrays.asList(childParsers) : Collections.emptyList());
-      return;
+    public final QName getElementName() {
+      return elementName;
     }
 
-    public final QName getName() {
-      return name;
-    }
-
-    public Set<Parser<?,?>> getChildParsers() {
+    public final Set<ContentParser<?,?>> getChildParsers() {
       return childParsers;
     }
 
     @Override
     protected final boolean isParserFor(final XMLEvent event) {
       if (!super.isParserFor(event)) return false;
-      return name.equals(event.asStartElement().getName());
+      return elementName.equals(event.asStartElement().getName());
     }
 
-    protected final Optional<Parser<?,?>> findChildParserFor(final @Nullable XMLEvent event) {
+    protected final Optional<ContentParser<?,?>> findChildParserFor(final @Nullable XMLEvent event) {
       return (event != null) ? childParsers.stream().filter((parser) -> parser.isParserFor(event)).findFirst() : Optional.empty();
     }
 
-    private final XMLEvent getNextEvent(final State state, final XMLEventReader reader, final @Nullable Element<?> terminatingParser) throws TerminatingParserException, XMLStreamException {
-      if ((terminatingParser != null) && (findChildParserFor(reader.peek()).equals(Optional.of(terminatingParser)))) throw new TerminatingParserException(state);
-      return reader.nextEvent();
-    }
-
-    private final List<Map.Entry<Parser<?,?>,?>> parseChildren(final State state, final XMLEventReader reader, final @Nullable Element<?> terminatingParser) throws TerminatingParserException, XMLStreamException {
-      final List<Map.Entry<Parser<?,?>,?>> children = new ArrayList<>();
-      XMLEvent event = getNextEvent(state, reader, terminatingParser);
-      while (!event.isEndElement()) {
-        final Optional<Parser<?,?>> parser = findChildParserFor(event);
-        if (parser.isPresent()) {
-          final Object child = parser.get().parse(state, event, reader, terminatingParser);
-          children.add(new AbstractMap.SimpleImmutableEntry<Parser<? extends XMLEvent,?>,Object>(parser.get(), child));
-        } else { // Ignore any content the user didn't specify a parser for...
-          ignoreEvent(event, reader);
-        }
-        event = getNextEvent(state, reader, terminatingParser);
-      }
-      return children;
-    }
-
     @Override
-    protected final T parseImpl(final State state, final XMLEvent event, final XMLEventReader reader, final @Nullable Element<?> terminatingParser) throws TerminatingParserException, XMLStreamException {
-      state.pushContext(this, event.asStartElement());
-      try {
-        final List<Map.Entry<Parser<?,?>,?>> children = parseChildren(state, reader, terminatingParser);
-        return targetFunction.apply(state, children);
-      } finally {
-        state.popContext();
-      }
+    protected final T parse(final ElementParser<?>.@Nullable ParsingContextImpl parentContext, final XMLEvent event, final XMLEventReader reader, final @Nullable ElementParser<?> terminatingParser) throws TerminatingParserException, XMLStreamException {
+      final ParsingContextImpl context = (parentContext != null) ? new ParsingContextImpl(parentContext, eventClass.cast(event)) : new ParsingContextImpl(eventClass.cast(event));
+      context.parseChildren(reader, terminatingParser);
+      final T value = targetFunction.apply(context);
+      if (saveTargetValue) context.saveValue(value);
+      return value;
     }
 
     @Override
     public String toString() {
-      return '<' + name.toString() + '>';
+      return '<' + elementName.toString() + '>';
     }
 
-  } // Element
+    @SuppressWarnings("unchecked")
+    private static final <@NonNull ET> Stream<Map.Entry<ElementParser<ET>,ET>> getElements(final Stream<? extends Map.Entry<? extends ContentParser<?,?>,?>> values, final @Nullable QName name, final Class<ET> valueClass) {
+      return values.filter((entry) -> ElementParser.class.isInstance(entry.getKey())).<Map.Entry<ElementParser<?>,?>> map((entry) -> new AbstractMap.SimpleImmutableEntry<>(ElementParser.class.cast(entry.getKey()), entry.getValue())).filter((entry) -> (name == null) || name.equals(entry.getKey().getElementName())).filter((entry) -> valueClass.isAssignableFrom(entry.getKey().getTargetClass())).<Map.Entry<ElementParser<ET>,ET>> map((entry) -> new AbstractMap.SimpleImmutableEntry<>((ElementParser<ET>)entry.getKey(), valueClass.cast(entry.getValue())));
+    }
 
-  public static class ContainerElement extends Element<StartElement> {
+    public final class ParsingContextImpl implements ElementParsingContext<T> {
+      private final Map<ElementParser<?>,Object> savedValues; // Reference a single object, shared by the entire context tree.
+      private final List<Map.Entry<ContentParser<?,?>,?>> childValues = new ArrayList<>();
+      private final ElementParser<?>.@Nullable ParsingContextImpl parentContext;
+      private final StartElement startElement;
 
-    public ContainerElement(final QName name, final Collection<Parser<?,?>> childParsers) {
-      super(StartElement.class, name, (state, children) -> state.currentElement(), false, childParsers);
+      public ParsingContextImpl(final StartElement startElement) {
+        savedValues = new ConcurrentHashMap<ElementParser<?>,Object>();
+        parentContext = null;
+        this.startElement = startElement;
+        return;
+      }
+
+      public ParsingContextImpl(final ElementParser<?>.ParsingContextImpl parentContext, final StartElement startElement) {
+        savedValues = parentContext.savedValues;
+        this.parentContext = parentContext;
+        this.startElement = startElement;
+        return;
+      }
+
+      public ElementParser<T> getParser() {
+        return ElementParser.this;
+      }
+
+      @Override
+      public Class<T> getElementType() {
+        return targetClass;
+      }
+
+      @Override
+      public final QName getElementName() {
+        return elementName;
+      }
+
+      @Override
+      public StartElement getStartElement() {
+        return startElement;
+      }
+
+      private int getDepth() {
+        final ElementParser<?>.@Nullable ParsingContextImpl pc = parentContext;
+        if (pc == null) return 0;
+        return pc.getDepth() + 1;
+      }
+
+      private Deque<StartElement> getElementContextImpl(Deque<StartElement> elementStack) {
+        if (parentContext != null) parentContext.getElementContextImpl(elementStack);
+        elementStack.push(startElement);
+        return elementStack;
+      }
+
+      @Override
+      public Deque<StartElement> getElementContext() {
+        return getElementContextImpl(new ArrayDeque<>(getDepth() + 1));
+      }
+
+      private XMLEvent getNextEvent(final XMLEventReader reader, final @Nullable ElementParser<?> terminatingParser) throws TerminatingParserException, XMLStreamException {
+        if ((terminatingParser != null) && (findChildParserFor(reader.peek()).equals(Optional.of(terminatingParser)))) throw new TerminatingParserException(this);
+        return reader.nextEvent();
+      }
+
+      protected void parseChildren(final XMLEventReader reader, final @Nullable ElementParser<?> terminatingParser) throws TerminatingParserException, XMLStreamException {
+        XMLEvent event = getNextEvent(reader, terminatingParser);
+        while (!event.isEndElement()) {
+          final Optional<ContentParser<?,?>> parser = findChildParserFor(event);
+          if (parser.isPresent()) {
+            final Object child = parser.get().parse(this, parser.get().eventClass.cast(event), reader, terminatingParser);
+            childValues.add(new AbstractMap.SimpleImmutableEntry<ContentParser<? extends XMLEvent,?>,Object>(parser.get(), child));
+          } else { // Ignore any content the user didn't specify a parser for...
+            ignoreEvent(event, reader);
+          }
+          event = getNextEvent(reader, terminatingParser);
+        }
+        return;
+      }
+
+      public Optional<T> saveValue(final T value) {
+        final Object oldValue = savedValues.put(ElementParser.this, value);
+        return (oldValue != null) ? Optional.of(ElementParser.this.targetClass.cast(oldValue)) : Optional.empty();
+      }
+
+      public <@NonNull S> Optional<S> getSavedValueOpt(final ElementParser<S> parser) {
+        final Object value = savedValues.get(parser);
+        return (value != null) ? Optional.of(parser.targetClass.cast(value)) : Optional.empty();
+      }
+
+      public <@NonNull S> S getSavedValue(final ElementParser<S> parser) throws NoSuchElementException {
+        return getSavedValueOpt(parser).orElseThrow(() -> new NoSuchElementException(ElementParser.this.toString()));
+      }
+
+      public <@NonNull ET> Optional<ET> getFirstChildValueOpt(final ContentParser<?,ET> parser) throws NoSuchElementException {
+        return getChildValues(parser).findFirst();
+      }
+
+      public <@NonNull ET> ET getFirstChildValue(final ContentParser<?,ET> parser) throws NoSuchElementException {
+        return getFirstChildValueOpt(parser).orElseThrow(() -> new NoSuchElementException(parser.toString()));
+      }
+
+      @Override
+      public <@NonNull S> Optional<S> getSavedValueOpt(final QName name, final Class<S> valueClass) {
+        return getElements(savedValues.entrySet().stream(), name, valueClass).map(Map.Entry::getValue).findAny();
+      }
+
+      public <@NonNull ET> Stream<ET> getChildValues(final ContentParser<?,ET> parser) {
+        return childValues.stream().filter((entry) -> entry.getKey() == parser).map(Map.Entry::getValue).map((v) -> parser.getTargetClass().cast(v));
+      }
+
+      @Override
+      public <@NonNull ET> Stream<ET> getChildValues(final QName name, final Class<ET> valueClass) {
+        return getElements(childValues.stream(), name, valueClass).map(Map.Entry::getValue);
+      }
+
+    } // ElementParser.InvocationContext
+
+  } // ElementParser
+
+  protected static class ContainerElementParser extends ElementParser<StartElement> {
+
+    public ContainerElementParser(final QName name, final @NonNull ContentParser<?,?>... childParsers) {
+      super(StartElement.class, name, (context) -> context.getStartElement(), false, childParsers);
       return;
     }
 
-    public ContainerElement(final QName name, final @NonNull Parser<?,?>... childParsers) {
-      this(name, (childParsers != null) ? Arrays.asList(childParsers) : Collections.emptyList());
+  } // ContainerElementParser
+
+  protected static class WrapperElementParser<@NonNull T> extends ElementParser<T> {
+
+    public WrapperElementParser(final QName name, final ElementParser<T> wrappedElement) {
+      super(wrappedElement.targetClass, name, (context) -> cast(context).getFirstChildValue(wrappedElement), false, wrappedElement);
       return;
     }
 
-    public ContainerElement(final QName name, final Parser<?,?> childParser) {
-      this(name, Collections.singleton(childParser));
+  } // WrapperElementParser
+
+  protected static class TextElementParser<@NonNull T> extends ElementParser<T> {
+    private static final CharactersParser CHARACTERS_PARSER = new CharactersParser(true, true, false);
+
+    public TextElementParser(final Class<T> targetClass, final QName name, final Function<? super String,? extends T> targetFunction, final boolean saveTargetValue) {
+      super(targetClass, name, (context) -> targetFunction.apply(cast(context).getChildValues(CHARACTERS_PARSER).collect(Collectors.joining())), saveTargetValue, CHARACTERS_PARSER);
       return;
     }
 
-  } // ContainerElement
+  } // TextElementParser
 
-  public static class WrapperElement<@NonNull T> extends Element<T> {
+  protected static class StringElementParser extends TextElementParser<String> {
 
-    public WrapperElement(final QName name, final Element<T> wrappedElement) {
-      super(wrappedElement.targetClass, name, (state, children) -> firstValue(children, wrappedElement), false, wrappedElement);
+    public StringElementParser(final QName name, final boolean saveTargetValue) {
+      super(String.class, name, Function.identity(), saveTargetValue);
       return;
     }
 
-  } // WrapperElement
+  } // StringElementParser
 
-  public static class TextElement<@NonNull T> extends Element<T> {
-    private static final Text TEXT_PARSER = new Text(true, true, false);
+  public static class SchemaBuilder<@NonNull T,@NonNull SB extends SchemaBuilder<?,?>> {
+    protected final Class<T> targetClass;
+    protected final Class<? extends SB> builderType;
+    protected final @Nullable URI namespace;
+    protected final Map<QName,ElementParser<?>> elementParsers;
 
-    public TextElement(final Class<T> targetClass, final QName name, final Function<String,T> targetFunction, final boolean storeTargetValue) {
-      super(targetClass, name, (state, children) -> targetFunction.apply(filter(children, TEXT_PARSER).collect(Collectors.joining())), storeTargetValue, Collections.singleton(TEXT_PARSER));
+    protected SchemaBuilder(final Class<T> targetClass, final Class<? extends SB> builderType, final @Nullable URI namespace, final @Nullable Map<QName,ElementParser<?>> elementParsers) {
+      this.targetClass = Objects.requireNonNull(targetClass);
+      this.builderType = Objects.requireNonNull(builderType);
+      this.namespace = namespace;
+      this.elementParsers = (elementParsers != null) ? new HashMap<>(elementParsers) : new HashMap<>();
       return;
     }
 
-  } // TextElement
-
-  public static class StringElement extends TextElement<String> {
-
-    public StringElement(final QName name, final boolean storeTargetValue) {
-      super(String.class, name, Function.identity(), storeTargetValue);
-      return;
+    protected SB forkImpl(final @Nullable URI namespace) {
+      return builderType.cast(new SchemaBuilder<T,SB>(targetClass, builderType, namespace, elementParsers));
     }
 
-  } // StringElement
+    public final SB fork() {
+      return forkImpl(namespace);
+    }
+
+    public final SB namespace(final @Nullable URI namespace) {
+      return forkImpl(namespace);
+    }
+
+    public final QName qn(final String localName) {
+      return new QName(Optional.ofNullable(namespace).map(URI::toString).orElse(XMLConstants.NULL_NS_URI), localName);
+    }
+
+    public final @NonNull QName[] qns(final @NonNull String... localNames) {
+      return ((localNames != null) ? Arrays.<String> asList(localNames) : Collections.<String> emptyList()).stream().map(this::qn).toArray((n) -> new @NonNull QName[n]);
+    }
+
+    protected SB add(final ElementParser<?> elementParser) {
+      if (elementParsers.containsKey(elementParser.getElementName())) throw new IllegalArgumentException("Attempt to add parser '" + elementParser.getElementName() + "' twice");
+      elementParsers.put(elementParser.getElementName(), elementParser);
+      return builderType.cast(this);
+    }
+
+    protected final <E extends ElementParser<?>> E getParser(final Class<E> type, final QName name) throws NoSuchElementException, ClassCastException {
+      return type.cast(Optional.ofNullable(elementParsers.get(name)).orElseThrow(() -> new NoSuchElementException("No such parser '" + name + "'")));
+    }
+
+    protected final <E extends ElementParser<?>> E getParser(final Class<E> type, final String localName) throws NoSuchElementException, ClassCastException {
+      return getParser(type, qn(localName));
+    }
+
+    protected final @NonNull ElementParser<?>[] getParsers(final @NonNull QName... names) throws NoSuchElementException, ClassCastException {
+      return ((names != null) ? Arrays.<QName> asList(names) : Collections.<QName> emptyList()).stream().<ElementParser<?>> map((qn) -> getParser(ElementParser.WILDCARD_CLASS, qn)).toArray((n) -> new ElementParser<?>[n]);
+    }
+
+    protected final @NonNull ElementParser<?>[] getParsers(final @NonNull String... localNames) throws NoSuchElementException, ClassCastException {
+      return getParsers(qns(localNames));
+    }
+
+    public final <@NonNull ET> SB element(final String localName, final Class<ET> targetClass, final Function<ElementParsingContext<ET>,ET> targetFunction, final boolean saveTargetValue, final @NonNull QName... childElementNames) throws NoSuchElementException, ClassCastException {
+      return add(new ElementParser<ET>(targetClass, qn(localName), targetFunction, saveTargetValue, getParsers(childElementNames)));
+    }
+
+    public final <@NonNull ET> SB element(final String localName, final Class<ET> targetClass, final Function<ElementParsingContext<ET>,ET> targetFunction, final boolean saveTargetValue, final @NonNull String... childElementNames) throws NoSuchElementException, ClassCastException {
+      return element(localName, targetClass, targetFunction, saveTargetValue, qns(childElementNames));
+    }
+
+    public final SB container(final String localName, final @NonNull QName... childElementNames) throws NoSuchElementException, ClassCastException {
+      return add(new ContainerElementParser(qn(localName), getParsers(childElementNames)));
+    }
+
+    public final SB container(final String localName, final @NonNull String... childElementNames) throws NoSuchElementException, ClassCastException {
+      return container(localName, qns(childElementNames));
+    }
+
+    public final <@NonNull ET> SB text(final String localName, final Class<ET> targetClass, final Function<String,ET> targetFunction, final boolean saveTargetValue) {
+      return add(new TextElementParser<ET>(targetClass, qn(localName), targetFunction, saveTargetValue));
+    }
+
+    public final <@NonNull ET> SB text(final String localName, final Class<ET> targetClass, final Function<String,ET> targetFunction) {
+      return text(localName, targetClass, targetFunction, false);
+    }
+
+    public final SB string(final String localName, final boolean saveTargetValue) {
+      return add(new StringElementParser(qn(localName), saveTargetValue));
+    }
+
+    public final SB string(final String localName) {
+      return string(localName, false);
+    }
+
+    public XMLStreamParser<T> build(final QName documentElementName, final QName targetElementName) throws NoSuchElementException, ClassCastException {
+      return new XMLStreamParser<T>(targetClass, elementParsers.values(), documentElementName, targetElementName);
+    }
+
+    public XMLStreamParser<T> build(final String documentParserName, final String targetParserName) throws NoSuchElementException, ClassCastException {
+      return build(qn(documentParserName), qn(targetParserName));
+    }
+
+  } // SchemaBuilder
 
 }

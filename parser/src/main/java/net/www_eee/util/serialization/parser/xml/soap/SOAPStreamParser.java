@@ -7,6 +7,7 @@
 
 package net.www_eee.util.serialization.parser.xml.soap;
 
+import java.net.*;
 import java.util.*;
 
 import javax.xml.namespace.*;
@@ -26,6 +27,14 @@ import net.www_eee.util.serialization.parser.xml.*;
  */
 @NonNullByDefault
 public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
+  public static final QName ENVELOPE_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Envelope");
+  public static final QName HEADER_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Header");
+  public static final QName BODY_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Body");
+  public static final QName VALUE_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Value");
+  public static final QName CODE_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Code");
+  public static final QName TEXT_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Text");
+  public static final QName REASON_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Reason");
+  public static final QName FAULT_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Fault");
   protected static final SOAPFactory SOAP_FACTORY;
   static {
     try {
@@ -34,60 +43,108 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
       throw new RuntimeException(se);
     }
   }
-  protected static final TextElement<QName> VALUE_ELEMENT = new TextElement<>(QName.class, new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Value"), (s) -> new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, s.substring(s.indexOf(':') + 1), s.substring(0, s.indexOf(':'))), false);
-  private static final WrapperElement<QName> CODE_ELEMENT = new WrapperElement<>(new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Code"), VALUE_ELEMENT);
-  protected static final StringElement TEXT_ELEMENT = new StringElement(new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Text"), false);
-  private static final WrapperElement<String> REASON_ELEMENT = new WrapperElement<>(new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Reason"), TEXT_ELEMENT);
-  public static final Element<SOAPFaultException> FAULT_ELEMENT = new Element<>(SOAPFaultException.class, new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Fault"), (state, children) -> {
+  protected static final TextElementParser<QName> VALUE_ELEMENT = new TextElementParser<>(QName.class, VALUE_QNAME, (s) -> new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, s.substring(s.indexOf(':') + 1), s.substring(0, s.indexOf(':'))), false);
+  private static final WrapperElementParser<QName> CODE_ELEMENT = new WrapperElementParser<>(CODE_QNAME, VALUE_ELEMENT);
+  protected static final StringElementParser TEXT_ELEMENT = new StringElementParser(TEXT_QNAME, false);
+  private static final WrapperElementParser<String> REASON_ELEMENT = new WrapperElementParser<>(REASON_QNAME, TEXT_ELEMENT);
+  protected static final ElementParser<SOAPFaultException> FAULT_ELEMENT = new ElementParser<>(SOAPFaultException.class, FAULT_QNAME, (context) -> {
     final SOAPFault fault;
     try {
-      fault = SOAP_FACTORY.createFault(firstValue(children, REASON_ELEMENT), firstValue(children, CODE_ELEMENT));
+      fault = SOAP_FACTORY.createFault(cast(context).getFirstChildValue(REASON_ELEMENT), cast(context).getFirstChildValue(CODE_ELEMENT));
     } catch (SOAPException soape) {
       throw new RuntimeException(soape);
     }
     throw new SOAPFaultException(fault);
   }, false, CODE_ELEMENT, REASON_ELEMENT);
 
-  public SOAPStreamParser(final EnvelopeElement envelopeParser, final Element<T> targetParser) {
-    super(envelopeParser, targetParser);
+  protected SOAPStreamParser(final Class<T> targetClass, final Collection<ElementParser<?>> elementParsers, final QName targetElementName) throws NoSuchElementException, ClassCastException {
+    super(targetClass, elementParsers, ENVELOPE_QNAME, targetElementName);
     //TODO return; // https://bugs.openjdk.java.net/browse/JDK-8036775
   }
 
-  public static class HeaderElement extends ContainerElement {
+  @SuppressWarnings("unchecked")
+  public static <@NonNull T> SchemaBuilder<T,? extends SchemaBuilder<T,?>> buildSchema(final Class<T> targetClass, final @Nullable URI namespace) {
+    return new SchemaBuilder<T,SchemaBuilder<T,?>>(targetClass, (Class<SchemaBuilder<T,?>>)(Object)SchemaBuilder.class, namespace, null);
+  }
 
-    public HeaderElement(final Collection<Parser<?,?>> childParsers) {
-      super(new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Header"), childParsers);
+  protected static class HeaderElementParser extends ContainerElementParser {
+
+    public HeaderElementParser(final @NonNull ContentParser<?,?>... childParsers) {
+      super(HEADER_QNAME, childParsers);
       return;
     }
 
-    public HeaderElement(final @NonNull Parser<?,?>... childParsers) {
-      this((childParsers != null) ? Arrays.asList(childParsers) : Collections.emptyList());
+  } // HeaderElementParser
+
+  protected static class BodyElementParser extends ContainerElementParser {
+
+    public BodyElementParser(final ElementParser<?> childParser) {
+      super(BODY_QNAME, FAULT_ELEMENT, childParser);
       return;
     }
 
-    public HeaderElement(final Parser<?,?> childParser) {
-      this(Collections.singleton(childParser));
+  } // BodyElementParser
+
+  protected static class EnvelopeElementParser extends ContainerElementParser {
+
+    public EnvelopeElementParser(final HeaderElementParser headerParser, final BodyElementParser bodyParser) {
+      super(ENVELOPE_QNAME, headerParser, bodyParser);
       return;
     }
 
-  } // HeaderElement
-
-  public static class BodyElement extends ContainerElement {
-
-    public BodyElement(final Element<?> responseParser) {
-      super(new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Body"), FAULT_ELEMENT, responseParser);
+    public EnvelopeElementParser(final BodyElementParser bodyParser) {
+      super(ENVELOPE_QNAME, bodyParser);
       return;
     }
 
-  } // BodyElement
+  } // EnvelopeElementParser
 
-  public static class EnvelopeElement extends ContainerElement {
+  public static class SchemaBuilder<@NonNull T,@NonNull SB extends SchemaBuilder<?,?>> extends XMLStreamParser.SchemaBuilder<T,SB> {
 
-    public EnvelopeElement(final @Nullable HeaderElement headerParser, final BodyElement bodyParser) {
-      super(new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Envelope"), (headerParser != null) ? Arrays.asList(headerParser, bodyParser) : Collections.singleton(bodyParser));
+    protected SchemaBuilder(final Class<T> targetClass, final Class<? extends SB> builderType, final @Nullable URI namespace, final @Nullable Map<QName,ElementParser<?>> elementParsers) {
+      super(targetClass, builderType, namespace, elementParsers);
+      add(FAULT_ELEMENT);
       return;
     }
 
-  } // EnvelopeElement
+    @Override
+    protected SB forkImpl(final @Nullable URI namespace) {
+      return builderType.cast(new SchemaBuilder<T,SB>(targetClass, builderType, namespace, elementParsers));
+    }
+
+    public final SB header(final @NonNull QName... childElementNames) throws NoSuchElementException, ClassCastException {
+      return add(new HeaderElementParser(getParsers(childElementNames)));
+    }
+
+    public final SB header(final @NonNull String... childElementNames) throws NoSuchElementException, ClassCastException {
+      return header(qns(childElementNames));
+    }
+
+    public final SB body(final QName childElementName) throws NoSuchElementException, ClassCastException {
+      return add(new BodyElementParser(getParser(ElementParser.class, childElementName)));
+    }
+
+    public final SB body(final String childElementName) throws NoSuchElementException, ClassCastException {
+      return body(qn(childElementName));
+    }
+
+    public final SB envelope(final boolean header) throws NoSuchElementException, ClassCastException {
+      return add(header ? new EnvelopeElementParser(getParser(HeaderElementParser.class, HEADER_QNAME), getParser(BodyElementParser.class, BODY_QNAME)) : new EnvelopeElementParser(getParser(BodyElementParser.class, BODY_QNAME)));
+    }
+
+    @Override
+    public SOAPStreamParser<T> build(final QName documentElementName, final QName targetElementName) throws NoSuchElementException, ClassCastException {
+      return new SOAPStreamParser<T>(targetClass, elementParsers.values(), targetElementName);
+    }
+
+    public SOAPStreamParser<T> build(final QName targetElementName) throws NoSuchElementException, ClassCastException {
+      return new SOAPStreamParser<T>(targetClass, elementParsers.values(), targetElementName);
+    }
+
+    public SOAPStreamParser<T> build(final String targetElementName) throws NoSuchElementException, ClassCastException {
+      return build(qn(targetElementName));
+    }
+
+  } // SchemaBuilder
 
 }
