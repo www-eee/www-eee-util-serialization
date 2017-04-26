@@ -68,7 +68,7 @@ public class IntrospectableTest {
 
     @Override
     public Info<? extends StreetAddress> introspect() {
-      return new Info.Builder<StreetAddress>(StreetAddress.class, TEST_NS_URI, false).attr(String.class, false, "Street", street).attr(Integer.class, false, "Number", number).attr(String.class, false, "PostalCode", postalCode).build();
+      return new Info.Builder<StreetAddress>(StreetAddress.class, TEST_NS_URI, false).attr("Street", street).attr("Number", number).attr("PostalCode", postalCode).build();
     }
 
   } // StreetAddress
@@ -93,7 +93,7 @@ public class IntrospectableTest {
 
     @Override
     public Info<? extends Building> introspect() {
-      return new Info.Builder<Building>(Building.class, TEST_NS_URI, false).complexChild(StreetAddress.class, false, "StreetAddress", streetAddress).attr(String.class, false, "InsuranceProvider", insuranceProvider).build();
+      return new Info.Builder<Building>(Building.class, TEST_NS_URI, false).complexChild(StreetAddress.class, false, "StreetAddress", streetAddress).attr("InsuranceProvider", insuranceProvider).build();
     }
 
   } // Building
@@ -125,7 +125,7 @@ public class IntrospectableTest {
 
     @Override
     public final Info<? extends Apartment> introspect() {
-      return super.introspect().superCast(Building.class).build().subclass(Apartment.class).attr(Integer.class, false, "Suites", suites).primitiveChild(Integer.class, false, "Suite", String.class, false, "Tenants", "Tenant", tenants).build();
+      return super.introspect().superCast(Building.class).build().subclass(Apartment.class).attr("Suites", suites).primitiveChild(Integer.class, false, "Suite", String.class, false, "Tenants", "Tenant", tenants).build();
     }
 
   } // Apartment
@@ -145,7 +145,7 @@ public class IntrospectableTest {
 
     @Override
     public final Info<? extends House> introspect() {
-      return super.introspect().superCast(Building.class).build().subclass(House.class).attr(Integer.class, false, "YardSize", yardSize).build();
+      return super.introspect().superCast(Building.class).build().subclass(House.class).attr("YardSize", yardSize).build();
     }
 
   } // House
@@ -186,7 +186,7 @@ public class IntrospectableTest {
 
     @Override
     public Info<? extends Agent> introspect() {
-      return new Info.Builder<Agent>(Agent.class, TEST_NS_URI, false).attr(String.class, false, "Name", name).complexChild(House.class, false, "PrimaryHouse", primaryHouse).complexChild(House.class, false, "SecondaryHouse", secondaryHouse).complexChild(Building.class, true, "Listings", "Listing", listings).build();
+      return new Info.Builder<Agent>(Agent.class, TEST_NS_URI, false).attr("Name", name).complexChild(House.class, false, "PrimaryHouse", primaryHouse).complexChild(House.class, false, "SecondaryHouse", secondaryHouse).complexChild(Building.class, true, "Listings", "Listing", listings).build();
     }
 
   } // Agent

@@ -9,6 +9,7 @@ package net.www_eee.util.serialization.introspection;
 
 import java.io.*;
 import java.net.*;
+import java.time.*;
 import java.util.*;
 import java.util.function.*;
 import java.util.stream.*;
@@ -90,6 +91,11 @@ public interface Introspectable extends XMLSerializable {
 
     public Map<String,Child<?,?>> getChildren() {
       return filter(entrySet().stream(), Child.WILDCARD_CLASS).filter((entry) -> entry.getValue().get().hasNext()).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (u, v) -> u, LinkedHashMap::new));
+    }
+
+    @Override
+    public int hashCode() {
+      return props.hashCode();
     }
 
     @Override
@@ -391,7 +397,7 @@ public interface Introspectable extends XMLSerializable {
         return;
       }
 
-      public <T extends I> Builder<T> subclass(final Class<T> type) {
+      public <T extends Introspectable> Builder<T> subclass(final Class<T> type) {
         return new Builder<T>(type, namespace, lateBound, props);
       }
 
@@ -432,12 +438,104 @@ public interface Introspectable extends XMLSerializable {
         return attr(valueType, valueTypeExtensions, propName, value, Object::toString);
       }
 
+      public Builder<I> attr(final String propName, final @Nullable String value) {
+        return attr(String.class, false, propName, value);
+      }
+
+      public Builder<I> attr(final String propName, final @Nullable Boolean value) {
+        return attr(Boolean.class, false, propName, value);
+      }
+
+      public Builder<I> attr(final String propName, final @Nullable Integer value) {
+        return attr(Integer.class, false, propName, value);
+      }
+
+      public Builder<I> attr(final String propName, final @Nullable Long value) {
+        return attr(Long.class, false, propName, value);
+      }
+
+      public Builder<I> attr(final String propName, final @Nullable Double value) {
+        return attr(Double.class, false, propName, value);
+      }
+
+      public Builder<I> attr(final String propName, final @Nullable Float value) {
+        return attr(Float.class, false, propName, value);
+      }
+
+      public Builder<I> attr(final String propName, final @Nullable Short value) {
+        return attr(Short.class, false, propName, value);
+      }
+
+      public Builder<I> attr(final String propName, final @Nullable Date value) {
+        return attr(Date.class, false, propName, value);
+      }
+
+      public Builder<I> attr(final String propName, final @Nullable Calendar value) {
+        return attr(Calendar.class, false, propName, value);
+      }
+
+      public Builder<I> attr(final String propName, final @Nullable Instant value) {
+        return attr(Instant.class, false, propName, value);
+      }
+
+      public Builder<I> attr(final String propName, final @Nullable Duration value) {
+        return attr(Duration.class, false, propName, value);
+      }
+
+      public Builder<I> attr(final String propName, final @Nullable LocalDate value) {
+        return attr(LocalDate.class, false, propName, value);
+      }
+
+      public Builder<I> attr(final String propName, final @Nullable LocalTime value) {
+        return attr(LocalTime.class, false, propName, value);
+      }
+
+      public Builder<I> attr(final String propName, final @Nullable LocalDateTime value) {
+        return attr(LocalDateTime.class, false, propName, value);
+      }
+
+      public Builder<I> attr(final String propName, final @Nullable ZonedDateTime value) {
+        return attr(ZonedDateTime.class, false, propName, value);
+      }
+
+      public Builder<I> attr(final String propName, final @Nullable OffsetDateTime value) {
+        return attr(OffsetDateTime.class, false, propName, value);
+      }
+
+      public Builder<I> attr(final String propName, final @Nullable OffsetTime value) {
+        return attr(OffsetTime.class, false, propName, value);
+      }
+
+      public Builder<I> attr(final String propName, final @Nullable Year value) {
+        return attr(Year.class, false, propName, value);
+      }
+
+      public Builder<I> attr(final String propName, final @Nullable YearMonth value) {
+        return attr(YearMonth.class, false, propName, value);
+      }
+
+      public Builder<I> attr(final String propName, final @Nullable Month value) {
+        return attr(Month.class, false, propName, value);
+      }
+
+      public Builder<I> attr(final String propName, final @Nullable MonthDay value) {
+        return attr(MonthDay.class, false, propName, value);
+      }
+
+      public Builder<I> attr(final String propName, final @Nullable DayOfWeek value) {
+        return attr(DayOfWeek.class, false, propName, value);
+      }
+
       public <V> Builder<I> primitiveChild(final Class<V> valueType, final boolean valueTypeExtensions, final String propName, final String valueName, final @Nullable Iterator<? extends @Nullable V> values, final Function<V,String> valueToString) {
         return put(propName, new PrimitiveCollection<V>(type, valueType, valueTypeExtensions, valueName, (values != null) ? mapValues(values, (value) -> (value != null) ? valueToString.apply(value) : null) : null));
       }
 
       public <V> Builder<I> primitiveChild(final Class<V> valueType, final boolean valueTypeExtensions, final String propName, final String valueName, final @Nullable Collection<? extends @Nullable V> values) {
         return primitiveChild(valueType, valueTypeExtensions, propName, valueName, (values != null) ? values.iterator() : null, Object::toString);
+      }
+
+      public Builder<I> primitiveChild(final String propName, final String valueName, final @Nullable Collection<? extends @Nullable String> values) {
+        return primitiveChild(String.class, false, propName, valueName, values);
       }
 
       public <V extends Introspectable> Builder<I> complexChild(final Class<V> valueType, final boolean valueTypeExtensions, final String propName, final String valueName, final @Nullable Iterator<? extends @Nullable V> values) {
