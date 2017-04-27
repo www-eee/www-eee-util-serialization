@@ -125,7 +125,7 @@ public class IntrospectableTest {
 
     @Override
     public final Info<? extends Apartment> introspect() {
-      return super.introspect().superCast(Building.class).build().subclass(Apartment.class).attr("Suites", suites).primitiveChild(Integer.class, false, "Suite", String.class, false, "Tenants", "Tenant", tenants).build();
+      return super.introspect().superCast(Building.class).build().type(Apartment.class).attr("Suites", suites).primitiveChild(Integer.class, false, "Suite", String.class, false, "Tenants", "Tenant", tenants).build();
     }
 
   } // Apartment
@@ -145,7 +145,7 @@ public class IntrospectableTest {
 
     @Override
     public final Info<? extends House> introspect() {
-      return super.introspect().superCast(Building.class).build().subclass(House.class).attr("YardSize", yardSize).build();
+      return super.introspect().superCast(Building.class).build().type(House.class).attr("YardSize", yardSize).build();
     }
 
   } // House

@@ -397,8 +397,9 @@ public interface Introspectable extends XMLSerializable {
         return;
       }
 
-      public <T extends Introspectable> Builder<T> subclass(final Class<T> type) {
-        return new Builder<T>(type, namespace, lateBound, props);
+      @SuppressWarnings("unchecked")
+      public <T extends Introspectable> Builder<T> type(final Class<T> type) {
+        return this.type.equals(type) ? (Builder<T>)this : new Builder<T>(type, namespace, lateBound, props);
       }
 
       private Builder<I> put(final String name, final Property<?,?> prop) {
@@ -406,8 +407,18 @@ public interface Introspectable extends XMLSerializable {
         return this;
       }
 
-      public Builder<I> remove(final String propName) {
-        props.remove(propName);
+      public Builder<I> remove(final String propName) throws NoSuchElementException {
+        Optional.ofNullable(props.remove(propName)).get();
+        return this;
+      }
+
+      public Builder<I> rename(final String oldPropName, final String newPropName) throws NoSuchElementException {
+        props.put(newPropName, Optional.ofNullable(props.remove(oldPropName)).get());
+        return this;
+      }
+
+      public Builder<I> addAll(final Info<?> info) {
+        props.putAll(info.props);
         return this;
       }
 
@@ -464,6 +475,18 @@ public interface Introspectable extends XMLSerializable {
 
       public Builder<I> attr(final String propName, final @Nullable Short value) {
         return attr(Short.class, false, propName, value);
+      }
+
+      public Builder<I> attr(final String propName, final @Nullable UUID value) {
+        return attr(UUID.class, false, propName, value);
+      }
+
+      public Builder<I> attr(final String propName, final @Nullable URI value) {
+        return attr(URI.class, false, propName, value);
+      }
+
+      public Builder<I> attr(final String propName, final @Nullable URL value) {
+        return attr(URL.class, false, propName, value);
       }
 
       public Builder<I> attr(final String propName, final @Nullable Date value) {
