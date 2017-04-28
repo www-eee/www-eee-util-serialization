@@ -85,6 +85,10 @@ public interface Introspectable extends XMLSerializable {
       return props.filter((e) -> propClass.isInstance(e.getValue())).<Map.Entry<String,P>> map((e) -> new AbstractMap.SimpleImmutableEntry<>(e.getKey(), propClass.cast(e.getValue())));
     }
 
+    public Map<String,Property<?,?>> getValues() {
+      return entrySet().stream().filter((entry) -> !entry.getValue().isEmpty()).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (u, v) -> u, LinkedHashMap::new));
+    }
+
     public Map<String,Attr<?>> getAttrs() {
       return filter(entrySet().stream(), Attr.WILDCARD_CLASS).filter((entry) -> entry.getValue().get().isPresent()).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (u, v) -> u, LinkedHashMap::new));
     }
@@ -101,6 +105,11 @@ public interface Introspectable extends XMLSerializable {
     @Override
     public boolean equals(final @Nullable Object other) {
       return Optional.ofNullable(other).filter(Info.class::isInstance).map(Info.class::cast).filter((i) -> type.equals(i.type)).filter((i) -> Objects.equals(namespace, i.namespace)).filter((i) -> lateBound == i.lateBound).filter((i) -> props.equals(i.props)).isPresent();
+    }
+
+    @Override
+    public String toString() {
+      return getValues().toString();
     }
 
     @Override
@@ -240,7 +249,14 @@ public interface Introspectable extends XMLSerializable {
         return value;
       }
 
+      public abstract boolean isEmpty();
+
       abstract Property<V,C> forClass(Class<?> declaringClass);
+
+      @Override
+      public String toString() {
+        return get().toString();
+      }
 
     } // Info.Property
 
@@ -258,6 +274,16 @@ public interface Introspectable extends XMLSerializable {
         return (this.declaringClass.equals(declaringClass)) ? this : new Attr<>(declaringClass, valueType, valueTypeExtensions, value.isPresent() ? value.get() : null);
       }
 
+      @Override
+      public boolean isEmpty() {
+        return !get().isPresent();
+      }
+
+      @Override
+      public String toString() {
+        return String.valueOf(value.isPresent() ? value.get() : null);
+      }
+
     } // Info.Attr
 
     public static abstract class Child<V,@NonNull C extends Iterator<?>> extends Property<V,C> {
@@ -273,6 +299,11 @@ public interface Introspectable extends XMLSerializable {
 
       public String getValueName() {
         return valueName;
+      }
+
+      @Override
+      public final boolean isEmpty() {
+        return !get().hasNext();
       }
 
     } // Info.Child
