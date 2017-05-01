@@ -251,8 +251,6 @@ public interface Introspectable extends XMLSerializable {
 
       public abstract boolean isEmpty();
 
-      abstract Property<V,C> forClass(Class<?> declaringClass);
-
       @Override
       public String toString() {
         return get().toString();
@@ -267,11 +265,6 @@ public interface Introspectable extends XMLSerializable {
       private Attr(final Class<?> declaringClass, final Class<V> valueType, final boolean valueTypeExtensions, @Nullable String value) {
         super(declaringClass, valueType, valueTypeExtensions, Optional.ofNullable(value));
         return;
-      }
-
-      @Override
-      Attr<V> forClass(Class<?> declaringClass) {
-        return (this.declaringClass.equals(declaringClass)) ? this : new Attr<>(declaringClass, valueType, valueTypeExtensions, value.isPresent() ? value.get() : null);
       }
 
       @Override
@@ -336,11 +329,6 @@ public interface Introspectable extends XMLSerializable {
         return Optional.of(prop).filter(PrimitiveCollection.class::isInstance).map(PrimitiveCollection.class::cast);
       }
 
-      @Override
-      PrimitiveCollection<V> forClass(Class<?> declaringClass) {
-        return (this.declaringClass.equals(declaringClass)) ? this : new PrimitiveCollection<>(declaringClass, valueType, valueTypeExtensions, valueName, value);
-      }
-
     } // Info.PrimitiveCollection
 
     public static final class ComplexCollection<V extends Introspectable> extends CollectionChild<V,Iterator<? extends @Nullable Info<V>>> {
@@ -354,11 +342,6 @@ public interface Introspectable extends XMLSerializable {
 
       public static final Optional<ComplexCollection<?>> cast(final Property<?,?> prop) {
         return Optional.of(prop).filter(ComplexCollection.class::isInstance).map(ComplexCollection.class::cast);
-      }
-
-      @Override
-      ComplexCollection<V> forClass(Class<?> declaringClass) {
-        return (this.declaringClass.equals(declaringClass)) ? this : new ComplexCollection<>(declaringClass, valueType, valueTypeExtensions, valueName, value);
       }
 
     } // Info.ComplexCollection
@@ -409,11 +392,6 @@ public interface Introspectable extends XMLSerializable {
         return Optional.of(prop).filter(PrimitiveMap.class::isInstance).map(PrimitiveMap.class::cast);
       }
 
-      @Override
-      PrimitiveMap<K,V> forClass(Class<?> declaringClass) {
-        return (this.declaringClass.equals(declaringClass)) ? this : new PrimitiveMap<>(declaringClass, keyType, keyTypeExtensions, keyName, valueType, valueTypeExtensions, valueName, value);
-      }
-
     } // Info.PrimitiveMap
 
     public static final class ComplexMap<K,V extends Introspectable> extends MapChild<K,V,Iterator<? extends Map.Entry<? extends @Nullable String,? extends @Nullable Info<V>>>> {
@@ -427,11 +405,6 @@ public interface Introspectable extends XMLSerializable {
 
       public static final Optional<ComplexMap<?,?>> cast(final Property<?,?> prop) {
         return Optional.of(prop).filter(ComplexMap.class::isInstance).map(ComplexMap.class::cast);
-      }
-
-      @Override
-      ComplexMap<K,V> forClass(Class<?> declaringClass) {
-        return (this.declaringClass.equals(declaringClass)) ? this : new ComplexMap<>(declaringClass, keyType, keyTypeExtensions, keyName, valueType, valueTypeExtensions, valueName, value);
       }
 
     } // Info.ComplexMap
@@ -466,12 +439,12 @@ public interface Introspectable extends XMLSerializable {
       }
 
       public Builder<I> remove(final String propName) throws NoSuchElementException {
-        Optional.ofNullable(props.remove(propName)).get();
+        Optional.ofNullable(props.remove(propName)).orElseThrow(() -> new NoSuchElementException(getClass().getSimpleName() + " for type '" + type.getName() + "' attempted to remove non-existing '" + propName + "' property"));
         return this;
       }
 
-      public Builder<I> rename(final String oldPropName, final String newPropName) throws NoSuchElementException {
-        props.put(newPropName, Optional.ofNullable(props.remove(oldPropName)).get().forClass(type));
+      public Builder<I> removeOpt(final String propName) {
+        props.remove(propName);
         return this;
       }
 
