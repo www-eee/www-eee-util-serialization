@@ -23,8 +23,8 @@ import org.eclipse.jdt.annotation.*;
 
 
 /**
- * You {@linkplain #create(Class, URI) create} a set of parsers you wish to capture from an {@linkplain XMLEventReader
- * XML event stream}, and this class provides a {@link Stream} implementation which will read/parse/construct them
+ * You {@linkplain #create(URI) create} a set of parsers you wish to capture from an {@linkplain XMLEventReader XML
+ * event stream}, and this class provides a {@link Stream} implementation which will read/parse/construct them
  * dynamically as they are retrieved.
  *
  * @param <T> The type of target objects to be streamed.
@@ -103,8 +103,8 @@ public class XMLStreamParser<@NonNull T> {
   }
 
   @SuppressWarnings("unchecked")
-  public static <@NonNull T> SchemaBuilder<T,? extends SchemaBuilder<T,?>> create(final Class<T> targetClass, final @Nullable URI namespace) {
-    return new SchemaBuilder<T,SchemaBuilder<T,?>>(targetClass, (Class<SchemaBuilder<T,?>>)(Object)SchemaBuilder.class, namespace, null);
+  public static SchemaBuilder<? extends SchemaBuilder<?>> create(final @Nullable URI namespace) {
+    return new SchemaBuilder<>((Class<SchemaBuilder<?>>)(Object)SchemaBuilder.class, namespace, null);
   }
 
   @SuppressWarnings("unchecked")
@@ -661,14 +661,12 @@ public class XMLStreamParser<@NonNull T> {
 
   } // StringElementParser
 
-  public static class SchemaBuilder<@NonNull T,@NonNull SB extends SchemaBuilder<?,?>> {
-    protected final Class<T> targetClass;
+  public static class SchemaBuilder<@NonNull SB extends SchemaBuilder<?>> {
     protected final Class<? extends SB> builderType;
     protected final @Nullable URI namespace;
     protected final Map<QName,ElementParser<?>> elementParsers;
 
-    protected SchemaBuilder(final Class<T> targetClass, final Class<? extends SB> builderType, final @Nullable URI namespace, final @Nullable Map<QName,ElementParser<?>> elementParsers) {
-      this.targetClass = Objects.requireNonNull(targetClass);
+    protected SchemaBuilder(final Class<? extends SB> builderType, final @Nullable URI namespace, final @Nullable Map<QName,ElementParser<?>> elementParsers) {
       this.builderType = Objects.requireNonNull(builderType);
       this.namespace = namespace;
       this.elementParsers = (elementParsers != null) ? new HashMap<>(elementParsers) : new HashMap<>();
@@ -676,7 +674,7 @@ public class XMLStreamParser<@NonNull T> {
     }
 
     protected SB forkImpl(final @Nullable URI namespace) {
-      return builderType.cast(new SchemaBuilder<T,SB>(targetClass, builderType, namespace, elementParsers));
+      return builderType.cast(new SchemaBuilder<SB>(builderType, namespace, elementParsers));
     }
 
     public final SB fork() {
@@ -749,12 +747,12 @@ public class XMLStreamParser<@NonNull T> {
       return string(localName, false);
     }
 
-    public XMLStreamParser<T> parser(final QName documentElementName, final QName targetElementName) throws NoSuchElementException, ClassCastException {
+    public <@NonNull T> XMLStreamParser<T> parser(final Class<T> targetClass, final QName documentElementName, final QName targetElementName) throws NoSuchElementException, ClassCastException {
       return new XMLStreamParser<T>(targetClass, elementParsers.values(), documentElementName, targetElementName);
     }
 
-    public XMLStreamParser<T> parser(final String documentParserName, final String targetParserName) throws NoSuchElementException, ClassCastException {
-      return parser(qn(documentParserName), qn(targetParserName));
+    public <@NonNull T> XMLStreamParser<T> parser(final Class<T> targetClass, final String documentParserName, final String targetParserName) throws NoSuchElementException, ClassCastException {
+      return parser(targetClass, qn(documentParserName), qn(targetParserName));
     }
 
   } // SchemaBuilder

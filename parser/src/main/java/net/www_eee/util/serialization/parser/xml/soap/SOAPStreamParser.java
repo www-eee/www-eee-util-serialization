@@ -63,8 +63,8 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
   }
 
   @SuppressWarnings("unchecked")
-  public static <@NonNull T> SchemaBuilder<T,? extends SchemaBuilder<T,?>> create(final Class<T> targetClass, final @Nullable URI namespace) {
-    return new SchemaBuilder<T,SchemaBuilder<T,?>>(targetClass, (Class<SchemaBuilder<T,?>>)(Object)SchemaBuilder.class, namespace, null);
+  public static SchemaBuilder<? extends SchemaBuilder<?>> create(final @Nullable URI namespace) {
+    return new SchemaBuilder<>((Class<SchemaBuilder<?>>)(Object)SchemaBuilder.class, namespace, null);
   }
 
   protected static class HeaderElementParser extends ContainerElementParser {
@@ -99,17 +99,17 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
 
   } // EnvelopeElementParser
 
-  public static class SchemaBuilder<@NonNull T,@NonNull SB extends SchemaBuilder<?,?>> extends XMLStreamParser.SchemaBuilder<T,SB> {
+  public static class SchemaBuilder<@NonNull SB extends SchemaBuilder<?>> extends XMLStreamParser.SchemaBuilder<SB> {
 
-    protected SchemaBuilder(final Class<T> targetClass, final Class<? extends SB> builderType, final @Nullable URI namespace, final @Nullable Map<QName,ElementParser<?>> elementParsers) {
-      super(targetClass, builderType, namespace, elementParsers);
+    protected SchemaBuilder(final Class<? extends SB> builderType, final @Nullable URI namespace, final @Nullable Map<QName,ElementParser<?>> elementParsers) {
+      super(builderType, namespace, elementParsers);
       add(FAULT_ELEMENT);
       return;
     }
 
     @Override
     protected SB forkImpl(final @Nullable URI namespace) {
-      return builderType.cast(new SchemaBuilder<T,SB>(targetClass, builderType, namespace, elementParsers));
+      return builderType.cast(new SchemaBuilder<SB>(builderType, namespace, elementParsers));
     }
 
     public final SB header(final @NonNull QName... childElementNames) throws NoSuchElementException, ClassCastException {
@@ -133,16 +133,16 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
     }
 
     @Override
-    public SOAPStreamParser<T> parser(final QName documentElementName, final QName targetElementName) throws NoSuchElementException, ClassCastException {
+    public <@NonNull T> SOAPStreamParser<T> parser(final Class<T> targetClass, final QName documentElementName, final QName targetElementName) throws NoSuchElementException, ClassCastException {
       return new SOAPStreamParser<T>(targetClass, elementParsers.values(), targetElementName);
     }
 
-    public SOAPStreamParser<T> parser(final QName targetElementName) throws NoSuchElementException, ClassCastException {
+    public <@NonNull T> SOAPStreamParser<T> parser(final Class<T> targetClass, final QName targetElementName) throws NoSuchElementException, ClassCastException {
       return new SOAPStreamParser<T>(targetClass, elementParsers.values(), targetElementName);
     }
 
-    public SOAPStreamParser<T> parser(final String targetElementName) throws NoSuchElementException, ClassCastException {
-      return parser(qn(targetElementName));
+    public <@NonNull T> SOAPStreamParser<T> parser(final Class<T> targetClass, final String targetElementName) throws NoSuchElementException, ClassCastException {
+      return parser(targetClass, qn(targetElementName));
     }
 
   } // SchemaBuilder
