@@ -86,15 +86,15 @@ public interface Introspectable extends XMLSerializable {
     }
 
     public Map<String,Property<?,?>> getValues() {
-      return entrySet().stream().filter((entry) -> !entry.getValue().isEmpty()).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (u, v) -> u, LinkedHashMap::new));
+      return Collections.unmodifiableMap(entrySet().stream().filter((entry) -> !entry.getValue().isEmpty()).collect(Collectors.<Map.Entry<String,Property<?,?>>,String,Property<?,?>,LinkedHashMap<String,Property<?,?>>> toMap(Map.Entry::getKey, Map.Entry::getValue, (u, v) -> u, LinkedHashMap::new)));
     }
 
     public Map<String,Attr<?>> getAttrs() {
-      return filter(entrySet().stream(), Attr.WILDCARD_CLASS).filter((entry) -> entry.getValue().get().isPresent()).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (u, v) -> u, LinkedHashMap::new));
+      return Collections.unmodifiableMap(filter(entrySet().stream(), Attr.WILDCARD_CLASS).filter((entry) -> entry.getValue().get().isPresent()).collect(Collectors.<Map.Entry<String,Attr<?>>,String,Attr<?>,LinkedHashMap<String,Attr<?>>> toMap(Map.Entry::getKey, Map.Entry::getValue, (u, v) -> u, LinkedHashMap::new)));
     }
 
     public Map<String,Child<?,?>> getChildren() {
-      return filter(entrySet().stream(), Child.WILDCARD_CLASS).filter((entry) -> entry.getValue().get().hasNext()).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (u, v) -> u, LinkedHashMap::new));
+      return Collections.unmodifiableMap(filter(entrySet().stream(), Child.WILDCARD_CLASS).filter((entry) -> entry.getValue().get().hasNext()).collect(Collectors.<Map.Entry<String,Child<?,?>>,String,Child<?,?>,LinkedHashMap<String,Child<?,?>>> toMap(Map.Entry::getKey, Map.Entry::getValue, (u, v) -> u, LinkedHashMap::new)));
     }
 
     @Override

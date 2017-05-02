@@ -32,12 +32,13 @@ import org.eclipse.jdt.annotation.*;
 @NonNullByDefault
 public class XMLStreamParser<@NonNull T> {
   private static final XMLInputFactory XML_INPUT_FACTORY = XMLInputFactory.newInstance();
+  protected final Class<T> targetClass;
   protected final Map<QName,ElementParser<?>> elementParsers;
   private final ElementParser<?> documentParser;
   private final ElementParser<T> targetParser;
 
   protected XMLStreamParser(final Class<T> targetClass, final Collection<ElementParser<?>> elementParsers, final QName documentElementName, final QName targetElementName) throws NoSuchElementException, ClassCastException {
-    Objects.requireNonNull(targetClass, "targetClass");
+    this.targetClass = Objects.requireNonNull(targetClass, "null targetClass");
     this.elementParsers = Collections.unmodifiableMap(new ConcurrentHashMap<>(Objects.requireNonNull(elementParsers, "null elementParsers").stream().collect(Collectors.<ElementParser<?>,QName,ElementParser<?>> toMap(ElementParser::getElementName, Function.identity()))));
     this.documentParser = Optional.ofNullable(this.elementParsers.get(Objects.requireNonNull(documentElementName, "null documentElementName"))).orElseThrow(() -> new NoSuchElementException("No parser supplied for document element " + documentElementName));
     final ElementParser<?> tp1 = Optional.ofNullable(this.elementParsers.get(Objects.requireNonNull(targetElementName, "null targetElementName"))).orElseThrow(() -> new NoSuchElementException("No parser supplied for target element " + targetElementName));
@@ -46,6 +47,10 @@ public class XMLStreamParser<@NonNull T> {
     final ElementParser<T> tp2 = (ElementParser<T>)tp1;
     this.targetParser = tp2;
     return;
+  }
+
+  public Class<T> getTargetClass() {
+    return targetClass;
   }
 
   public final Stream<T> parse(final InputStream inputStream) throws ParsingException {
