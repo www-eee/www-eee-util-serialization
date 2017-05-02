@@ -350,7 +350,7 @@ public class XMLStreamParser<@NonNull T> {
   public static class ElementValueParsingException extends ContextualParsingException {
 
     protected ElementValueParsingException(final RuntimeException cause, final ElementParser<?>.ParsingContextImpl context) {
-      super(cause.getClass().getSimpleName() + " parsing '" + context.event().getName().getLocalPart() + "' element", Objects.requireNonNull(cause, "null cause"), context);
+      super(cause.getClass().getName() + " parsing '" + context.event().getName().getLocalPart() + "' element: " + cause.getMessage(), Objects.requireNonNull(cause, "null cause"), context);
       return;
     }
 
@@ -453,7 +453,7 @@ public class XMLStreamParser<@NonNull T> {
     protected final boolean saveTargetValue;
     private final Set<ContentParser<?,?>> childParsers;
 
-    public ElementParser(final Class<T> targetClass, final QName elementName, final Function<ElementParsingContext<T>,T> targetFunction, final boolean saveTargetValue, final @NonNull ContentParser<?,?>... childParsers) {
+    public ElementParser(final Class<T> targetClass, final QName elementName, final Function<ElementParsingContext<T>,T> targetFunction, final boolean saveTargetValue, final @NonNull ContentParser<?,?> @Nullable... childParsers) {
       super(StartElement.class, targetClass);
       this.elementName = elementName;
       this.targetFunction = targetFunction;
@@ -626,7 +626,7 @@ public class XMLStreamParser<@NonNull T> {
 
   protected static class ContainerElementParser extends ElementParser<StartElement> {
 
-    public ContainerElementParser(final QName name, final @NonNull ContentParser<?,?>... childParsers) {
+    public ContainerElementParser(final QName name, final @NonNull ContentParser<?,?> @Nullable... childParsers) {
       super(StartElement.class, name, (context) -> context.event(), false, childParsers);
       return;
     }
@@ -691,7 +691,7 @@ public class XMLStreamParser<@NonNull T> {
       return new QName(Optional.ofNullable(namespace).map(URI::toString).orElse(XMLConstants.NULL_NS_URI), localName);
     }
 
-    public final @NonNull QName[] qns(final @NonNull String... localNames) {
+    public final @NonNull QName[] qns(final @NonNull String @Nullable... localNames) {
       return ((localNames != null) ? Arrays.<String> asList(localNames) : Collections.<String> emptyList()).stream().map(this::qn).toArray((n) -> new @NonNull QName[n]);
     }
 
@@ -709,27 +709,27 @@ public class XMLStreamParser<@NonNull T> {
       return getParser(type, qn(localName));
     }
 
-    protected final @NonNull ElementParser<?>[] getParsers(final @NonNull QName... names) throws NoSuchElementException, ClassCastException {
+    protected final @NonNull ElementParser<?>[] getParsers(final @NonNull QName @Nullable... names) throws NoSuchElementException, ClassCastException {
       return ((names != null) ? Arrays.<QName> asList(names) : Collections.<QName> emptyList()).stream().<ElementParser<?>> map((qn) -> getParser(ElementParser.WILDCARD_CLASS, qn)).toArray((n) -> new ElementParser<?>[n]);
     }
 
-    protected final @NonNull ElementParser<?>[] getParsers(final @NonNull String... localNames) throws NoSuchElementException, ClassCastException {
+    protected final @NonNull ElementParser<?>[] getParsers(final @NonNull String @Nullable... localNames) throws NoSuchElementException, ClassCastException {
       return getParsers(qns(localNames));
     }
 
-    public final <@NonNull ET> SB element(final String localName, final Class<ET> targetClass, final Function<ElementParsingContext<ET>,ET> targetFunction, final boolean saveTargetValue, final @NonNull QName... childElementNames) throws NoSuchElementException, ClassCastException {
+    public final <@NonNull ET> SB element(final String localName, final Class<ET> targetClass, final Function<ElementParsingContext<ET>,ET> targetFunction, final boolean saveTargetValue, final @NonNull QName @Nullable... childElementNames) throws NoSuchElementException, ClassCastException {
       return add(new ElementParser<ET>(targetClass, qn(localName), targetFunction, saveTargetValue, getParsers(childElementNames)));
     }
 
-    public final <@NonNull ET> SB element(final String localName, final Class<ET> targetClass, final Function<ElementParsingContext<ET>,ET> targetFunction, final boolean saveTargetValue, final @NonNull String... childElementNames) throws NoSuchElementException, ClassCastException {
+    public final <@NonNull ET> SB element(final String localName, final Class<ET> targetClass, final Function<ElementParsingContext<ET>,ET> targetFunction, final boolean saveTargetValue, final @NonNull String @Nullable... childElementNames) throws NoSuchElementException, ClassCastException {
       return element(localName, targetClass, targetFunction, saveTargetValue, qns(childElementNames));
     }
 
-    public final SB container(final String localName, final @NonNull QName... childElementNames) throws NoSuchElementException, ClassCastException {
+    public final SB container(final String localName, final @NonNull QName @Nullable... childElementNames) throws NoSuchElementException, ClassCastException {
       return add(new ContainerElementParser(qn(localName), getParsers(childElementNames)));
     }
 
-    public final SB container(final String localName, final @NonNull String... childElementNames) throws NoSuchElementException, ClassCastException {
+    public final SB container(final String localName, final @NonNull String @Nullable... childElementNames) throws NoSuchElementException, ClassCastException {
       return container(localName, qns(childElementNames));
     }
 

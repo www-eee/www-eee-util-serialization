@@ -69,7 +69,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
 
   protected static class HeaderElementParser extends ContainerElementParser {
 
-    public HeaderElementParser(final @NonNull ContentParser<?,?>... childParsers) {
+    public HeaderElementParser(final @NonNull ContentParser<?,?> @Nullable... childParsers) {
       super(HEADER_QNAME, childParsers);
       return;
     }
@@ -116,7 +116,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
       return add(new HeaderElementParser(getParsers(childElementNames)));
     }
 
-    public final SB header(final @NonNull String... childElementNames) throws NoSuchElementException, ClassCastException {
+    public final SB header(final @NonNull String @Nullable... childElementNames) throws NoSuchElementException, ClassCastException {
       return header(qns(childElementNames));
     }
 
