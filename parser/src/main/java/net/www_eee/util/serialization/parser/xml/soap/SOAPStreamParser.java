@@ -103,7 +103,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
 
     protected SchemaBuilder(final Class<? extends SB> builderType, final @Nullable URI namespace, final @Nullable Map<QName,ElementParser<?>> elementParsers) {
       super(builderType, namespace, elementParsers);
-      add(FAULT_ELEMENT);
+      this.elementParsers.putIfAbsent(FAULT_ELEMENT.getElementName(), FAULT_ELEMENT);
       return;
     }
 
