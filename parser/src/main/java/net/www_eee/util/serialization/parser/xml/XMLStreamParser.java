@@ -186,40 +186,44 @@ public class XMLStreamParser<@NonNull T> {
 
     public Deque<StartElement> eventStack();
 
-    public <@NonNull S> Optional<S> savedOpt(final QName name, final Class<S> valueClass);
+    public <@NonNull S> Stream<S> saved(final @Nullable QName name, final Class<S> valueClass);
 
-    public default <@NonNull S> Optional<S> savedOpt(final String localName, final Class<S> valueClass) {
-      return savedOpt(new QName(ns(), localName), valueClass);
+    public default <@NonNull S> Stream<S> saved(final @Nullable String localName, final Class<S> valueClass) {
+      return saved((localName != null) ? new QName(ns(), localName) : null, valueClass);
     }
 
-    public default <@NonNull S> S saved(final QName name, final Class<S> valueClass) throws NoSuchElementException {
-      return savedOpt(name, valueClass).orElseThrow(() -> new NoSuchElementException("No '" + name.getLocalPart() + "' element (with '" + valueClass.getSimpleName() + "' value) found"));
+    public default <@NonNull S> S savedFirst(final @Nullable QName name, final Class<S> valueClass) throws NoSuchElementException {
+      return saved(name, valueClass).findFirst().orElseThrow(() -> new NoSuchElementException("No " + ((name != null) ? "'" + name.getLocalPart() + "' " : "") + " saved element with '" + valueClass.getSimpleName() + "' type value found"));
     }
 
-    public default <@NonNull S> S saved(final String localName, final Class<S> valueClass) throws NoSuchElementException {
-      return saved(new QName(ns(), localName), valueClass);
+    public default <@NonNull S> S savedFirst(final @Nullable String localName, final Class<S> valueClass) throws NoSuchElementException {
+      return savedFirst((localName != null) ? new QName(ns(), localName) : null, valueClass);
     }
 
-    public <@NonNull ET> Stream<ET> children(final QName name, final Class<ET> valueClass);
+    public Stream<Map.Entry<Map.Entry<QName,Class<?>>,List<?>>> children();
 
-    public default <@NonNull ET> Stream<ET> children(final String localName, final Class<ET> valueClass) {
-      return children(new QName(ns(), localName), valueClass);
+    public default <@NonNull ET> Stream<ET> children(final @Nullable QName name, final Class<ET> valueClass) {
+      return children().filter((entry) -> (name == null) || (name.equals(entry.getKey().getKey()))).filter((entry) -> valueClass.isAssignableFrom(entry.getKey().getValue())).<List<?>> map(Map.Entry::getValue).flatMap(List::stream).map((value) -> valueClass.cast(value));
     }
 
-    public default <@NonNull ET> Optional<ET> childOpt(final QName name, final Class<ET> valueClass) {
+    public default <@NonNull ET> Stream<ET> children(final @Nullable String localName, final Class<ET> valueClass) {
+      return children((localName != null) ? new QName(ns(), localName) : null, valueClass);
+    }
+
+    public default <@NonNull ET> Optional<ET> childOpt(final @Nullable QName name, final Class<ET> valueClass) {
       return children(name, valueClass).findFirst();
     }
 
-    public default <@NonNull ET> Optional<ET> childOpt(final String localName, final Class<ET> valueClass) {
-      return childOpt(new QName(ns(), localName), valueClass);
+    public default <@NonNull ET> Optional<ET> childOpt(final @Nullable String localName, final Class<ET> valueClass) {
+      return childOpt((localName != null) ? new QName(ns(), localName) : null, valueClass);
     }
 
-    public default <@NonNull ET> ET child(final QName name, final Class<ET> valueClass) throws NoSuchElementException {
-      return childOpt(name, valueClass).orElseThrow(() -> new NoSuchElementException("No '" + name.getLocalPart() + "' element (with '" + valueClass.getSimpleName() + "' value) found"));
+    public default <@NonNull ET> ET child(final @Nullable QName name, final Class<ET> valueClass) throws NoSuchElementException {
+      return childOpt(name, valueClass).orElseThrow(() -> new NoSuchElementException("No " + ((name != null) ? "'" + name.getLocalPart() + "' " : "") + " child element with '" + valueClass.getSimpleName() + "' type value found"));
     }
 
-    public default <@NonNull ET> ET child(final String localName, final Class<ET> valueClass) throws NoSuchElementException {
-      return child(new QName(ns(), localName), valueClass);
+    public default <@NonNull ET> ET child(final @Nullable String localName, final Class<ET> valueClass) throws NoSuchElementException {
+      return child((localName != null) ? new QName(ns(), localName) : null, valueClass);
     }
 
   } // ElementParsingContext
@@ -349,14 +353,14 @@ public class XMLStreamParser<@NonNull T> {
 
   public static class ElementValueParsingException extends ContextualParsingException {
 
-    protected ElementValueParsingException(final RuntimeException cause, final ElementParser<?>.ParsingContextImpl context) {
+    protected ElementValueParsingException(final Exception cause, final ElementParser<?>.ParsingContextImpl context) {
       super(cause.getClass().getName() + " parsing '" + context.event().getName().getLocalPart() + "' element: " + cause.getMessage(), Objects.requireNonNull(cause, "null cause"), context);
       return;
     }
 
     @Override
-    public RuntimeException getCause() {
-      return Objects.requireNonNull(RuntimeException.class.cast(super.getCause()));
+    public Exception getCause() {
+      return Objects.requireNonNull(Exception.class.cast(super.getCause()));
     }
 
   } // ElementValueParsingException
@@ -487,6 +491,8 @@ public class XMLStreamParser<@NonNull T> {
       final T value;
       try {
         value = targetFunction.apply(context);
+      } catch (ElementValueParsingException evpe) {
+        throw evpe;
       } catch (RuntimeException re) {
         throw new ElementValueParsingException(re, context);
       }
@@ -499,19 +505,22 @@ public class XMLStreamParser<@NonNull T> {
       return '<' + elementName.toString() + '>';
     }
 
-    @SuppressWarnings("unchecked")
-    private static final <@NonNull ET> Stream<Map.Entry<ElementParser<ET>,ET>> getElements(final Stream<? extends Map.Entry<? extends ContentParser<?,?>,?>> values, final @Nullable QName name, final Class<ET> valueClass) {
-      return values.filter((entry) -> ElementParser.class.isInstance(entry.getKey())).<Map.Entry<ElementParser<?>,?>> map((entry) -> new AbstractMap.SimpleImmutableEntry<>(ElementParser.class.cast(entry.getKey()), entry.getValue())).filter((entry) -> (name == null) || name.equals(entry.getKey().getElementName())).filter((entry) -> valueClass.isAssignableFrom(entry.getKey().getTargetClass())).<Map.Entry<ElementParser<ET>,ET>> map((entry) -> new AbstractMap.SimpleImmutableEntry<>((ElementParser<ET>)entry.getKey(), valueClass.cast(entry.getValue())));
+    private static final Stream<Map.Entry<ElementParser<?>,List<Object>>> getElements(final Stream<? extends Map.Entry<? extends ContentParser<?,?>,List<Object>>> values) {
+      return values.filter((entry) -> ElementParser.class.isInstance(entry.getKey())).<Map.Entry<ElementParser<?>,List<Object>>> map((entry) -> new AbstractMap.SimpleImmutableEntry<>(ElementParser.class.cast(entry.getKey()), entry.getValue()));
+    }
+
+    private static final <@NonNull ET> Stream<ET> getElements(final Stream<? extends Map.Entry<? extends ContentParser<?,?>,List<Object>>> values, final @Nullable QName name, final Class<ET> valueClass) {
+      return getElements(values).filter((entry) -> (name == null) || name.equals(entry.getKey().getElementName())).filter((entry) -> valueClass.isAssignableFrom(entry.getKey().getTargetClass())).map(Map.Entry::getValue).flatMap(List::stream).map(valueClass::cast);
     }
 
     public final class ParsingContextImpl implements ElementParsingContext<T> {
-      private final Map<ElementParser<?>,Object> savedValues; // Reference a single object, shared by the entire context tree.
-      private final List<Map.Entry<ContentParser<?,?>,?>> childValues = new ArrayList<>();
+      private final Map<ElementParser<?>,List<Object>> savedValues; // This is a reference to a singleton Map of saved values, shared by the entire context tree.
+      private final Map<ContentParser<?,?>,List<Object>> childValues = new ConcurrentHashMap<>();
       private final ElementParser<?>.@Nullable ParsingContextImpl parentContext;
       private final StartElement startElement;
 
       public ParsingContextImpl(final StartElement startElement) {
-        savedValues = new ConcurrentHashMap<ElementParser<?>,Object>();
+        savedValues = new ConcurrentHashMap<>();
         parentContext = null;
         this.startElement = startElement;
         return;
@@ -575,7 +584,12 @@ public class XMLStreamParser<@NonNull T> {
           final Optional<ContentParser<?,?>> parser = findChildParserFor(event);
           if (parser.isPresent()) {
             final Object child = parser.get().parse(this, parser.get().eventClass.cast(event), reader, terminatingParser);
-            childValues.add(new AbstractMap.SimpleImmutableEntry<ContentParser<? extends XMLEvent,?>,Object>(parser.get(), child));
+            final List<Object> existingValues = childValues.get(parser.get());
+            if (existingValues != null) {
+              existingValues.add(child);
+            } else {
+              childValues.put(parser.get(), new CopyOnWriteArrayList<>(Collections.singleton(child)));
+            }
           } else { // Ignore any content the user didn't specify a parser for...
             ignoreEvent(event, reader);
           }
@@ -584,18 +598,23 @@ public class XMLStreamParser<@NonNull T> {
         return;
       }
 
-      public Optional<T> saveValue(final T value) {
-        final Object oldValue = savedValues.put(ElementParser.this, value);
-        return (oldValue != null) ? Optional.of(ElementParser.this.targetClass.cast(oldValue)) : Optional.empty();
+      public void saveValue(final T value) {
+        final List<Object> existingValues = savedValues.get(ElementParser.this);
+        if (existingValues != null) {
+          existingValues.add(value);
+        } else {
+          savedValues.put(ElementParser.this, new CopyOnWriteArrayList<>(Collections.singleton(value)));
+        }
+        return;
       }
 
-      public <@NonNull S> Optional<S> savedOpt(final ElementParser<S> parser) {
-        final Object value = savedValues.get(parser);
-        return (value != null) ? Optional.of(parser.targetClass.cast(value)) : Optional.empty();
+      public <@NonNull S> Stream<S> saved(final ElementParser<S> parser) {
+        final List<Object> values = savedValues.get(ElementParser.this);
+        return (values != null) ? values.stream().map(parser.getTargetClass()::cast) : Stream.empty();
       }
 
-      public <@NonNull S> S saved(final ElementParser<S> parser) throws NoSuchElementException {
-        return savedOpt(parser).orElseThrow(() -> new NoSuchElementException(ElementParser.this.toString()));
+      public <@NonNull S> S savedFirst(final ElementParser<S> parser) throws NoSuchElementException {
+        return saved(parser).findFirst().orElseThrow(() -> new NoSuchElementException(ElementParser.this.toString()));
       }
 
       public <@NonNull ET> Optional<ET> childOpt(final ContentParser<?,ET> parser) {
@@ -607,20 +626,20 @@ public class XMLStreamParser<@NonNull T> {
       }
 
       @Override
-      public <@NonNull S> Optional<S> savedOpt(final QName name, final Class<S> valueClass) {
-        return getElements(savedValues.entrySet().stream(), name, valueClass).map(Map.Entry::getValue).findAny();
+      public <@NonNull S> Stream<S> saved(final @Nullable QName name, final Class<S> valueClass) {
+        return getElements(savedValues.entrySet().stream(), name, valueClass);
       }
 
       public <@NonNull ET> Stream<ET> children(final ContentParser<?,ET> parser) {
-        return childValues.stream().filter((entry) -> entry.getKey() == parser).map(Map.Entry::getValue).map((v) -> parser.getTargetClass().cast(v));
+        return Optional.ofNullable(childValues.get(parser)).map(List::stream).orElse(Stream.empty()).map((v) -> parser.getTargetClass().cast(v));
       }
 
       @Override
-      public <@NonNull ET> Stream<ET> children(final QName name, final Class<ET> valueClass) {
-        return getElements(childValues.stream(), name, valueClass).map(Map.Entry::getValue);
+      public Stream<Map.Entry<Map.Entry<QName,Class<?>>,List<?>>> children() {
+        return getElements(childValues.entrySet().stream()).map((entry) -> new AbstractMap.SimpleImmutableEntry<>(new AbstractMap.SimpleImmutableEntry<>(entry.getKey().getElementName(), entry.getKey().getTargetClass()), entry.getValue()));
       }
 
-    } // ElementParser.InvocationContext
+    } // ElementParser.ParsingContextImpl
 
   } // ElementParser
 

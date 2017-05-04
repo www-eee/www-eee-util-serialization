@@ -7,6 +7,7 @@
 
 package net.www_eee.util.serialization.parser.xml.soap;
 
+import java.beans.*;
 import java.net.*;
 import java.time.*;
 import java.util.*;
@@ -33,7 +34,7 @@ public class SOAPStreamParserTest {
   static {
     final SOAPStreamParser.SchemaBuilder<? extends SOAPStreamParser.SchemaBuilder<?>> schema = SOAPStreamParser.create(URI.create("http://www_eee.net/ns/"));
     schema.text("departureYear", Year.class, Year::parse, true).header("departureYear").string("departing").text("departureMonthDay", MonthDay.class, MonthDay::parse);
-    schema.element("departure", Departure.class, (ctx) -> new Departure(ctx.child("departing", String.class), ctx.child("departureMonthDay", MonthDay.class).atYear(ctx.saved("departureYear", Year.class).getValue())), false, "departing", "departureMonthDay");
+    schema.element("departure", Departure.class, (ctx) -> new Departure(ctx.child("departing", String.class), ctx.child("departureMonthDay", MonthDay.class).atYear(ctx.savedFirst("departureYear", Year.class).getValue())), false, "departing", "departureMonthDay");
     schema.container("departures", schema.qn("departure"), SOAPStreamParser.FAULT_QNAME).body("departures");
     DEPARTURE_STREAM_PARSER = schema.envelope(true).parser(Departure.class, "departure");
   }
@@ -109,6 +110,7 @@ public class SOAPStreamParserTest {
     private final String departing;
     private final LocalDate date;
 
+    @ConstructorProperties({ "Departing", "Date" })
     public Departure(final String departing, final LocalDate date) {
       this.departing = departing;
       this.date = date;
