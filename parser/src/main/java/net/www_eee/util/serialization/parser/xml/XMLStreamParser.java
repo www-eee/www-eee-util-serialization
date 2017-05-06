@@ -886,31 +886,23 @@ public class XMLStreamParser<@NonNull T> {
       return type.cast(Optional.ofNullable(elementParsers.get(name)).orElseThrow(() -> new NoSuchElementException("No '" + name + "' parser found")));
     }
 
-    protected final <E extends ElementParser<?>> E getParser(final Class<E> type, final String localName) throws NoSuchElementException, ClassCastException {
-      return getParser(type, qn(localName));
-    }
-
     protected final @NonNull ElementParser<?>[] getParsers(final @NonNull QName @Nullable... names) throws NoSuchElementException, ClassCastException {
       return ((names != null) ? Arrays.<QName> asList(names) : Collections.<QName> emptyList()).stream().<ElementParser<?>> map((qn) -> getParser(ElementParser.WILDCARD_CLASS, qn)).toArray((n) -> new ElementParser<?>[n]);
-    }
-
-    protected final @NonNull ElementParser<?>[] getParsers(final @NonNull String @Nullable... localNames) throws NoSuchElementException, ClassCastException {
-      return getParsers(qns(localNames));
     }
 
     public final <@NonNull ET> SB element(final String localName, final Class<ET> targetClass, final Function<ElementParsingContext<ET>,ET> targetFunction, final boolean saveTargetValue, final @NonNull QName @Nullable... childElementNames) throws NoSuchElementException, ClassCastException {
       return add(new ElementParser<ET>(targetClass, qn(localName), targetFunction, saveTargetValue, getParsers(childElementNames)));
     }
 
-    public final <@NonNull ET> SB element(final String localName, final Class<ET> targetClass, final Function<ElementParsingContext<ET>,ET> targetFunction, final boolean saveTargetValue, final @NonNull String @Nullable... childElementNames) throws NoSuchElementException, ClassCastException {
-      return element(localName, targetClass, targetFunction, saveTargetValue, qns(childElementNames));
+    public final <@NonNull ET> SB element(final String localName, final Class<ET> targetClass, final Function<ElementParsingContext<ET>,ET> targetFunction, final @NonNull String @Nullable... childElementNames) throws NoSuchElementException, ClassCastException {
+      return element(localName, targetClass, targetFunction, false, qns(childElementNames));
     }
 
-    public final SB container(final String localName, final @NonNull QName @Nullable... childElementNames) throws NoSuchElementException, ClassCastException {
+    public final SB container(final String localName, final @NonNull QName... childElementNames) throws NoSuchElementException, ClassCastException {
       return add(new ContainerElementParser(qn(localName), getParsers(childElementNames)));
     }
 
-    public final SB container(final String localName, final @NonNull String @Nullable... childElementNames) throws NoSuchElementException, ClassCastException {
+    public final SB container(final String localName, final @NonNull String... childElementNames) throws NoSuchElementException, ClassCastException {
       return container(localName, qns(childElementNames));
     }
 
@@ -930,13 +922,21 @@ public class XMLStreamParser<@NonNull T> {
       return string(localName, false);
     }
 
-    @SuppressWarnings("unchecked")
-    public final <@NonNull ET> InjectedElementBuilder<ET,@NonNull ? extends InjectedElementBuilder<ET,@NonNull ?>> injected(final QName name, final Class<ET> targetClass, final boolean saveTargetValue) {
-      return new InjectedElementBuilder<>((Class<InjectedElementBuilder<ET,?>>)(Object)InjectedElementBuilder.class, name, targetClass, saveTargetValue);
+    public final <@NonNull ET> SB injected(final QName elementName, final Class<ET> targetClass) {
+      return add(new InjectedElementParser<ET>(targetClass, elementName, false, null, null));
     }
 
-    public final <@NonNull ET> InjectedElementBuilder<ET,@NonNull ? extends InjectedElementBuilder<ET,@NonNull ?>> injected(final String localName, final Class<ET> targetClass, final boolean saveTargetValue) {
-      return injected(qn(localName), targetClass, saveTargetValue);
+    public final <@NonNull ET> SB injected(final String localName, final Class<ET> targetClass) {
+      return injected(qn(localName), targetClass);
+    }
+
+    @SuppressWarnings("unchecked")
+    public final <@NonNull ET> InjectedElementBuilder<ET,@NonNull ? extends InjectedElementBuilder<ET,@NonNull ?>> injectedBuilder(final QName elementName, final Class<ET> targetClass) {
+      return new InjectedElementBuilder<>((Class<InjectedElementBuilder<ET,?>>)(Object)InjectedElementBuilder.class, elementName, targetClass);
+    }
+
+    public final <@NonNull ET> InjectedElementBuilder<ET,@NonNull ? extends InjectedElementBuilder<ET,@NonNull ?>> injectedBuilder(final String localName, final Class<ET> targetClass) {
+      return injectedBuilder(qn(localName), targetClass);
     }
 
     public <@NonNull T> XMLStreamParser<T> parser(final Class<T> targetClass, final QName documentElementName, final QName targetElementName) throws NoSuchElementException, ClassCastException {
@@ -951,16 +951,20 @@ public class XMLStreamParser<@NonNull T> {
       protected final Class<? extends EB> elementBuilderType;
       protected final QName elementName;
       protected final Class<ET> targetClass;
-      protected final boolean saveTargetValue;
+      protected boolean saveTargetValue = false;
       protected final Set<ElementParser<?>> childParsers = new HashSet<>();
       protected final Map<String,InjectedElementParser.InjectionSpec<ET,?>> injectionSpecs = new ConcurrentHashMap<>();
 
-      protected InjectedElementBuilder(final Class<? extends EB> elementBuilderType, final QName elementName, final Class<ET> targetClass, final boolean saveTargetValue) {
+      protected InjectedElementBuilder(final Class<? extends EB> elementBuilderType, final QName elementName, final Class<ET> targetClass) {
         this.elementBuilderType = Objects.requireNonNull(elementBuilderType);
         this.elementName = Objects.requireNonNull(elementName);
         this.targetClass = Objects.requireNonNull(targetClass);
-        this.saveTargetValue = saveTargetValue;
         return;
+      }
+
+      public EB saveTargetValue(final boolean saveTargetValue) {
+        this.saveTargetValue = saveTargetValue;
+        return elementBuilderType.cast(this);
       }
 
       protected EB addAttrInjectionSpec(final String injectedFieldName, final QName attrName, final @Nullable Function<? super String,?> targetFunction) {
