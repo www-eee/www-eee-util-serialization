@@ -753,7 +753,7 @@ public class XMLStreamParser<@NonNull T> {
 
     protected static class SingleValuedInjectionSpec<@NonNull ET,@NonNull CT> extends InjectionSpec<ET,CT> {
 
-      protected SingleValuedInjectionSpec(final Class<CT> targetClass, final QName elementName, final boolean saved) {
+      protected SingleValuedInjectionSpec(final Class<CT> targetClass, final @Nullable QName elementName, final boolean saved) {
         super(targetClass, elementName, saved);
         return;
       }
