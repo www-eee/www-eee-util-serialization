@@ -726,7 +726,7 @@ public class XMLStreamParser<@NonNull T> {
     }
 
     protected static final <@NonNull T> T inject(final Class<? extends T> targetClass, final ElementParsingContext<T> ctx, final @Nullable Map<String,? extends InjectionSpec<T,?>> injectionSpecs) throws ElementValueParsingException {
-      final Map<String,Field<Object>> fields = ((injectionSpecs != null) ? Stream.concat(ctx.attrs().keySet().stream(), injectionSpecs.keySet().stream()) : ctx.attrs().keySet().stream()).map((injectedFieldName) -> new AbstractMap.SimpleImmutableEntry<>(injectedFieldName, DSL.field(DSL.name(injectedFieldName)))).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+      final Map<String,Field<Object>> fields = ((injectionSpecs != null) ? Stream.concat(ctx.attrs().keySet().stream(), injectionSpecs.keySet().stream()) : ctx.attrs().keySet().stream()).distinct().map((injectedFieldName) -> new AbstractMap.SimpleImmutableEntry<>(injectedFieldName, DSL.field(DSL.name(injectedFieldName)))).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
       final Record record = DSL_CONTEXT.newRecord(fields.values().stream().toArray(Field<?>[]::new));
       ctx.attrs().entrySet().stream().forEach((attr) -> record.<Object> set(Objects.requireNonNull(fields.get(attr.getKey())), attr.getValue()));
       if (injectionSpecs != null) injectionSpecs.entrySet().stream().forEach((spec) -> record.<Object> set(Objects.requireNonNull(fields.get(spec.getKey())), spec.getValue().apply(ctx)));
@@ -737,81 +737,107 @@ public class XMLStreamParser<@NonNull T> {
       }
     }
 
-    protected static abstract class InjectionSpec<@NonNull ET,@NonNull CT> implements Function<ElementParsingContext<ET>,@Nullable Object> {
-      protected final @Nullable QName elementName;
-      protected final Class<CT> targetClass;
-      protected final boolean saved;
+    protected static abstract class InjectionSpec<@NonNull ET,@NonNull ST> implements Function<ElementParsingContext<ET>,@Nullable Object> {
+      protected final Class<ST> sourceClass;
+      protected final @Nullable QName sourceName;
+      protected final boolean fromSaved;
 
-      protected InjectionSpec(final Class<CT> targetClass, final @Nullable QName elementName, final boolean saved) {
-        this.elementName = Objects.requireNonNull(elementName);
-        this.targetClass = Objects.requireNonNull(targetClass);
-        this.saved = saved;
+      protected InjectionSpec(final Class<ST> sourceClass, final @Nullable QName sourceName, final boolean fromSaved) {
+        this.sourceClass = Objects.requireNonNull(sourceClass);
+        this.sourceName = Objects.requireNonNull(sourceName);
+        this.fromSaved = fromSaved;
         return;
       }
 
     } // InjectedElementParser.InjectionSpec
 
-    protected static class SingleValuedInjectionSpec<@NonNull ET,@NonNull CT> extends InjectionSpec<ET,CT> {
+    protected static abstract class SingleValuedInjectionSpec<@NonNull ET,@NonNull ST> extends InjectionSpec<ET,ST> {
 
-      protected SingleValuedInjectionSpec(final Class<CT> targetClass, final @Nullable QName elementName, final boolean saved) {
-        super(targetClass, elementName, saved);
+      protected SingleValuedInjectionSpec(final Class<ST> sourceClass, final @Nullable QName sourceName, final boolean fromSaved) {
+        super(sourceClass, sourceName, fromSaved);
+        return;
+      }
+
+    } // InjectedElementParser.SingleValuedInjectionSpec
+
+    protected static class ObjectInjectionSpec<@NonNull ET,@NonNull ST> extends SingleValuedInjectionSpec<ET,ST> {
+
+      protected ObjectInjectionSpec(final Class<ST> sourceClass, final @Nullable QName sourceName, final boolean fromSaved) {
+        super(sourceClass, sourceName, fromSaved);
         return;
       }
 
       @Override
       public @Nullable Object apply(final ElementParsingContext<ET> ctx) {
-        return saved ? ctx.savedFirstNull(elementName, targetClass) : ctx.childNull(elementName, targetClass);
+        return fromSaved ? ctx.savedFirstNull(sourceName, sourceClass) : ctx.childNull(sourceName, sourceClass);
       }
 
-    } // InjectedElementParser.SingleValuedInjectionSpec
+    } // InjectedElementParser.ObjectInjectionSpec
 
-    protected static abstract class MultiValuedInjectionSpec<@NonNull ET,@NonNull CT> extends InjectionSpec<ET,CT> {
+    protected static class AttrInjectionSpec<@NonNull ET> extends SingleValuedInjectionSpec<ET,String> {
+      protected final Function<? super String,?> targetFunction;
 
-      protected MultiValuedInjectionSpec(final Class<CT> targetClass, final @Nullable QName elementName, final boolean saved) {
-        super(targetClass, elementName, saved);
+      protected AttrInjectionSpec(final QName sourceName, final @Nullable Function<? super String,?> targetFunction) {
+        super(String.class, sourceName, false);
+        this.targetFunction = (targetFunction != null) ? targetFunction : Function.identity();
+        return;
+      }
+
+      @Override
+      public @Nullable Object apply(final ElementParsingContext<ET> ctx) {
+        final @Nullable String attr = ctx.attrNull(Objects.requireNonNull(sourceName));
+        return (attr != null) ? targetFunction.apply(attr) : null;
+      }
+
+    } // InjectedElementParser.AttrInjectionSpec
+
+    protected static abstract class MultiValuedInjectionSpec<@NonNull ET,@NonNull ST> extends InjectionSpec<ET,ST> {
+
+      protected MultiValuedInjectionSpec(final Class<ST> sourceClass, final @Nullable QName sourceName, final boolean fromSaved) {
+        super(sourceClass, sourceName, fromSaved);
         return;
       }
 
     } // InjectedElementParser.MultiValuedInjectionSpec
 
-    protected static class ArrayInjectionSpec<@NonNull ET,@NonNull CT> extends MultiValuedInjectionSpec<ET,CT> {
+    protected static class ArrayInjectionSpec<@NonNull ET,@NonNull ST> extends MultiValuedInjectionSpec<ET,ST> {
 
-      protected ArrayInjectionSpec(final Class<CT> targetClass, final @Nullable QName elementName, final boolean saved) {
-        super(targetClass, elementName, saved);
+      protected ArrayInjectionSpec(final Class<ST> sourceClass, final @Nullable QName sourceName, final boolean fromSaved) {
+        super(sourceClass, sourceName, fromSaved);
         return;
       }
 
       @Override
       public @Nullable Object apply(final ElementParsingContext<ET> ctx) {
-        return (saved ? ctx.saved(elementName, targetClass) : ctx.children(elementName, targetClass)).toArray((n) -> (Object[])java.lang.reflect.Array.newInstance(targetClass, n));
+        return (fromSaved ? ctx.saved(sourceName, sourceClass) : ctx.children(sourceName, sourceClass)).toArray((n) -> (Object[])java.lang.reflect.Array.newInstance(sourceClass, n));
       }
 
     } // InjectedElementParser.ArrayInjectionSpec
 
-    protected static class ListInjectionSpec<@NonNull ET,@NonNull CT> extends MultiValuedInjectionSpec<ET,CT> {
+    protected static class ListInjectionSpec<@NonNull ET,@NonNull ST> extends MultiValuedInjectionSpec<ET,ST> {
 
-      protected ListInjectionSpec(final Class<CT> targetClass, final @Nullable QName elementName, final boolean saved) {
-        super(targetClass, elementName, saved);
+      protected ListInjectionSpec(final Class<ST> sourceClass, final @Nullable QName sourceName, final boolean fromSaved) {
+        super(sourceClass, sourceName, fromSaved);
         return;
       }
 
       @Override
       public @Nullable Object apply(final ElementParsingContext<ET> ctx) {
-        return (saved ? ctx.saved(elementName, targetClass) : ctx.children(elementName, targetClass)).collect(Collectors.toList());
+        return (fromSaved ? ctx.saved(sourceName, sourceClass) : ctx.children(sourceName, sourceClass)).collect(Collectors.toList());
       }
 
     } // InjectedElementParser.ListInjectionSpec
 
-    protected static class SetInjectionSpec<@NonNull ET,@NonNull CT> extends MultiValuedInjectionSpec<ET,CT> {
+    protected static class SetInjectionSpec<@NonNull ET,@NonNull ST> extends MultiValuedInjectionSpec<ET,ST> {
 
-      protected SetInjectionSpec(final Class<CT> targetClass, final @Nullable QName elementName, final boolean saved) {
-        super(targetClass, elementName, saved);
+      protected SetInjectionSpec(final Class<ST> sourceClass, final @Nullable QName sourceName, final boolean fromSaved) {
+        super(sourceClass, sourceName, fromSaved);
         return;
       }
 
       @Override
       public @Nullable Object apply(final ElementParsingContext<ET> ctx) {
-        return (saved ? ctx.saved(elementName, targetClass) : ctx.children(elementName, targetClass)).collect(Collectors.toSet());
+        return (fromSaved ? ctx.saved(sourceName, sourceClass) : ctx.children(sourceName, sourceClass)).collect(Collectors.toSet());
       }
 
     } // InjectedElementParser.SetInjectionSpec
@@ -937,16 +963,45 @@ public class XMLStreamParser<@NonNull T> {
         return;
       }
 
+      protected EB addAttrInjectionSpec(final String injectedFieldName, final QName attrName, final @Nullable Function<? super String,?> targetFunction) {
+        injectionSpecs.put(injectedFieldName, new InjectedElementParser.AttrInjectionSpec<>(attrName, targetFunction));
+        return elementBuilderType.cast(this);
+      }
+
+      public EB attr(final String injectedFieldName, final QName attrName, final Function<? super String,?> targetFunction) {
+        return addAttrInjectionSpec(injectedFieldName, attrName, targetFunction);
+      }
+
+      public EB attr(final String injectedFieldName, final String attrName, final Function<? super String,?> targetFunction) {
+        return addAttrInjectionSpec(injectedFieldName, new QName(XMLConstants.NULL_NS_URI, attrName), targetFunction);
+      }
+
+      public EB attr(final QName attrName, final Function<? super String,?> targetFunction) {
+        return addAttrInjectionSpec(attrName.getLocalPart(), attrName, targetFunction);
+      }
+
+      public EB attr(final String attrName, final Function<? super String,?> targetFunction) {
+        return addAttrInjectionSpec(attrName, new QName(XMLConstants.NULL_NS_URI, attrName), targetFunction);
+      }
+
+      public EB attr(final String injectedFieldName, final QName attrName) {
+        return addAttrInjectionSpec(injectedFieldName, attrName, null);
+      }
+
+      public EB attr(final String injectedFieldName, final String attrName) {
+        return addAttrInjectionSpec(injectedFieldName, new QName(XMLConstants.NULL_NS_URI, attrName), null);
+      }
+
       @SuppressWarnings("unchecked")
-      protected <@NonNull CT> EB addInjectionSpec(final String injectedFieldName, final QName injectedElementName, final boolean addChildParser, final Function<Class<CT>,InjectedElementParser.InjectionSpec<ET,CT>> injectionSpecCreator) throws NoSuchElementException {
-        final ElementParser<?> injectedElementParser = getParser(ElementParser.WILDCARD_CLASS, injectedElementName);
+      protected <@NonNull CT> EB addInjectionSpec(final String injectedFieldName, final QName sourceName, final boolean addChildParser, final Function<Class<CT>,InjectedElementParser.InjectionSpec<ET,CT>> injectionSpecCreator) throws NoSuchElementException {
+        final ElementParser<?> injectedElementParser = getParser(ElementParser.WILDCARD_CLASS, sourceName);
         if (addChildParser) childParsers.add(injectedElementParser);
         injectionSpecs.put(injectedFieldName, injectionSpecCreator.apply((Class<CT>)injectedElementParser.getTargetClass()));
         return elementBuilderType.cast(this);
       }
 
       public EB child(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
-        return addInjectionSpec(injectedFieldName, childElementName, true, (targetClass) -> new InjectedElementParser.SingleValuedInjectionSpec<>(targetClass, childElementName, false));
+        return addInjectionSpec(injectedFieldName, childElementName, true, (sourceClass) -> new InjectedElementParser.ObjectInjectionSpec<>(sourceClass, childElementName, false));
       }
 
       public EB child(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
@@ -954,7 +1009,7 @@ public class XMLStreamParser<@NonNull T> {
       }
 
       public EB array(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
-        return addInjectionSpec(injectedFieldName, childElementName, true, (targetClass) -> new InjectedElementParser.ArrayInjectionSpec<>(targetClass, childElementName, false));
+        return addInjectionSpec(injectedFieldName, childElementName, true, (sourceClass) -> new InjectedElementParser.ArrayInjectionSpec<>(sourceClass, childElementName, false));
       }
 
       public EB array(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
@@ -962,7 +1017,7 @@ public class XMLStreamParser<@NonNull T> {
       }
 
       public EB list(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
-        return addInjectionSpec(injectedFieldName, childElementName, true, (targetClass) -> new InjectedElementParser.ListInjectionSpec<>(targetClass, childElementName, false));
+        return addInjectionSpec(injectedFieldName, childElementName, true, (sourceClass) -> new InjectedElementParser.ListInjectionSpec<>(sourceClass, childElementName, false));
       }
 
       public EB list(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
@@ -970,7 +1025,7 @@ public class XMLStreamParser<@NonNull T> {
       }
 
       public EB set(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
-        return addInjectionSpec(injectedFieldName, childElementName, true, (targetClass) -> new InjectedElementParser.SetInjectionSpec<>(targetClass, childElementName, false));
+        return addInjectionSpec(injectedFieldName, childElementName, true, (sourceClass) -> new InjectedElementParser.SetInjectionSpec<>(sourceClass, childElementName, false));
       }
 
       public EB set(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
@@ -978,7 +1033,7 @@ public class XMLStreamParser<@NonNull T> {
       }
 
       public EB saved(final String injectedFieldName, final QName savedElementName) throws NoSuchElementException {
-        return addInjectionSpec(injectedFieldName, savedElementName, false, (targetClass) -> new InjectedElementParser.SingleValuedInjectionSpec<>(targetClass, savedElementName, true));
+        return addInjectionSpec(injectedFieldName, savedElementName, false, (sourceClass) -> new InjectedElementParser.ObjectInjectionSpec<>(sourceClass, savedElementName, true));
       }
 
       public EB saved(final String injectedFieldName, final String savedElementName) throws NoSuchElementException {
@@ -986,7 +1041,7 @@ public class XMLStreamParser<@NonNull T> {
       }
 
       public EB savedArray(final String injectedFieldName, final QName savedElementName) throws NoSuchElementException {
-        return addInjectionSpec(injectedFieldName, savedElementName, false, (targetClass) -> new InjectedElementParser.ArrayInjectionSpec<>(targetClass, savedElementName, true));
+        return addInjectionSpec(injectedFieldName, savedElementName, false, (sourceClass) -> new InjectedElementParser.ArrayInjectionSpec<>(sourceClass, savedElementName, true));
       }
 
       public EB savedArray(final String injectedFieldName, final String savedElementName) throws NoSuchElementException {
@@ -994,7 +1049,7 @@ public class XMLStreamParser<@NonNull T> {
       }
 
       public EB savedList(final String injectedFieldName, final QName savedElementName) throws NoSuchElementException {
-        return addInjectionSpec(injectedFieldName, savedElementName, false, (targetClass) -> new InjectedElementParser.ListInjectionSpec<>(targetClass, savedElementName, true));
+        return addInjectionSpec(injectedFieldName, savedElementName, false, (sourceClass) -> new InjectedElementParser.ListInjectionSpec<>(sourceClass, savedElementName, true));
       }
 
       public EB savedList(final String injectedFieldName, final String savedElementName) throws NoSuchElementException {
@@ -1002,7 +1057,7 @@ public class XMLStreamParser<@NonNull T> {
       }
 
       public EB savedSet(final String injectedFieldName, final QName savedElementName) throws NoSuchElementException {
-        return addInjectionSpec(injectedFieldName, savedElementName, false, (targetClass) -> new InjectedElementParser.SetInjectionSpec<>(targetClass, savedElementName, true));
+        return addInjectionSpec(injectedFieldName, savedElementName, false, (sourceClass) -> new InjectedElementParser.SetInjectionSpec<>(sourceClass, savedElementName, true));
       }
 
       public EB savedSet(final String injectedFieldName, final String savedElementName) throws NoSuchElementException {
