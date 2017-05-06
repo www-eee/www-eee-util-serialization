@@ -34,7 +34,8 @@ public class SOAPStreamParserTest {
   static {
     final SOAPStreamParser.SchemaBuilder<? extends SOAPStreamParser.SchemaBuilder<?>> schema = SOAPStreamParser.create(URI.create("http://www_eee.net/ns/"));
     schema.text("departureYear", Year.class, Year::parse, true).header("departureYear").string("departing").text("departureMonthDay", MonthDay.class, MonthDay::parse);
-    schema.element("departure", Departure.class, (ctx) -> new Departure(ctx.child("departing", String.class), ctx.child("departureMonthDay", MonthDay.class).atYear(ctx.savedFirst("departureYear", Year.class).getValue())), false, "departing", "departureMonthDay");
+    schema.injected("departure", Departure.class, false).child("Departing", "departing").child("DepartureMonthDay", "departureMonthDay").saved("DepartureYear", "departureYear").build();
+    // schema.element("departure", Departure.class, (ctx) -> new Departure(ctx.child("departing", String.class), ctx.child("departureMonthDay", MonthDay.class).atYear(ctx.savedFirst("departureYear", Year.class).getValue())), false, "departing", "departureMonthDay");
     schema.container("departures", schema.qn("departure"), SOAPStreamParser.FAULT_QNAME).body("departures");
     DEPARTURE_STREAM_PARSER = schema.envelope(true).parser(Departure.class, "departure");
   }
