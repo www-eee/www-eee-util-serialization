@@ -21,6 +21,10 @@ import javax.xml.stream.events.*;
 
 import org.eclipse.jdt.annotation.*;
 
+import org.jooq.*;
+import org.jooq.exception.*;
+import org.jooq.impl.*;
+
 
 /**
  * You {@linkplain #create(URI) create} a set of parsers you wish to capture from an {@linkplain XMLEventReader XML
@@ -103,7 +107,7 @@ public class XMLStreamParser<@NonNull T> {
   }
 
   @SuppressWarnings("unchecked")
-  public static SchemaBuilder<? extends SchemaBuilder<?>> create(final @Nullable URI namespace) {
+  public static SchemaBuilder<@NonNull ? extends SchemaBuilder<@NonNull ?>> create(final @Nullable URI namespace) {
     return new SchemaBuilder<>((Class<SchemaBuilder<?>>)(Object)SchemaBuilder.class, namespace, null);
   }
 
@@ -218,6 +222,16 @@ public class XMLStreamParser<@NonNull T> {
       return childOpt((localName != null) ? new QName(ns(), localName) : null, valueClass);
     }
 
+    public default <@NonNull ET> @Nullable ET childNull(final @Nullable QName name, final Class<ET> valueClass) {
+      final Optional<ET> child = childOpt(name, valueClass);
+      return child.isPresent() ? child.get() : null;
+    }
+
+    public default <@NonNull ET> @Nullable ET childNull(final @Nullable String localName, final Class<ET> valueClass) {
+      final Optional<ET> child = childOpt(localName, valueClass);
+      return child.isPresent() ? child.get() : null;
+    }
+
     public default <@NonNull ET> ET child(final @Nullable QName name, final Class<ET> valueClass) throws NoSuchElementException {
       return childOpt(name, valueClass).orElseThrow(() -> new NoSuchElementException("No " + ((name != null) ? "'" + name.getLocalPart() + "' " : "") + " child element with '" + valueClass.getSimpleName() + "' type value found"));
     }
@@ -234,7 +248,7 @@ public class XMLStreamParser<@NonNull T> {
     private final XMLEventReader reader;
 
     public TargetSpliterator(final ElementParser<?>.ParsingContextImpl parentContext, final XMLEventReader reader) throws IllegalArgumentException {
-      if (!((ElementParser<?>)parentContext.getParser()).getChildParsers().contains(targetParser)) throw new IllegalStateException("Current parser not parent of target parser");
+      if (!((ElementParser<?>)parentContext.getParser()).getChildParsers().stream().anyMatch(targetParser::equals)) throw new IllegalStateException("Current parser not parent of target parser");
       this.parentContext = parentContext;
       this.reader = reader;
       return;
@@ -267,7 +281,7 @@ public class XMLStreamParser<@NonNull T> {
             return false;
           }
 
-          final Optional<ContentParser<?,?>> parser = ((ElementParser<?>)parentContext.getParser()).findChildParserFor(event);
+          final Optional<? extends ContentParser<?,?>> parser = ((ElementParser<?>)parentContext.getParser()).findChildParserFor(event);
           if (parser.isPresent()) {
             if (parser.get() == targetParser) { // There could be some other content before the next applicable target event.
               targetEvent = event;
@@ -455,14 +469,19 @@ public class XMLStreamParser<@NonNull T> {
     protected final QName elementName;
     private final Function<ElementParsingContext<T>,T> targetFunction;
     protected final boolean saveTargetValue;
-    private final Set<ContentParser<?,?>> childParsers;
+    private final Set<? extends ContentParser<?,?>> childParsers;
 
-    public ElementParser(final Class<T> targetClass, final QName elementName, final Function<ElementParsingContext<T>,T> targetFunction, final boolean saveTargetValue, final @NonNull ContentParser<?,?> @Nullable... childParsers) {
+    public ElementParser(final Class<T> targetClass, final QName elementName, final Function<ElementParsingContext<T>,T> targetFunction, final boolean saveTargetValue, final @Nullable Collection<? extends ContentParser<?,?>> childParsers) {
       super(StartElement.class, targetClass);
       this.elementName = elementName;
       this.targetFunction = targetFunction;
       this.saveTargetValue = saveTargetValue;
-      this.childParsers = (childParsers != null) ? Collections.unmodifiableSet(new CopyOnWriteArraySet<>(Arrays.asList(childParsers))) : Collections.emptySet();
+      this.childParsers = (childParsers != null) ? Collections.unmodifiableSet(new CopyOnWriteArraySet<>(childParsers)) : Collections.emptySet();
+      return;
+    }
+
+    public ElementParser(final Class<T> targetClass, final QName elementName, final Function<ElementParsingContext<T>,T> targetFunction, final boolean saveTargetValue, final @NonNull ContentParser<?,?> @Nullable... childParsers) {
+      this(targetClass, elementName, targetFunction, saveTargetValue, (childParsers != null) ? Arrays.asList(childParsers) : null);
       return;
     }
 
@@ -470,7 +489,7 @@ public class XMLStreamParser<@NonNull T> {
       return elementName;
     }
 
-    public final Set<ContentParser<?,?>> getChildParsers() {
+    public final Set<? extends ContentParser<?,?>> getChildParsers() {
       return childParsers;
     }
 
@@ -480,7 +499,7 @@ public class XMLStreamParser<@NonNull T> {
       return elementName.equals(event.asStartElement().getName());
     }
 
-    protected final Optional<ContentParser<?,?>> findChildParserFor(final @Nullable XMLEvent event) {
+    protected final Optional<? extends ContentParser<?,?>> findChildParserFor(final @Nullable XMLEvent event) {
       return (event != null) ? childParsers.stream().filter((parser) -> parser.isParserFor(event)).findFirst() : Optional.empty();
     }
 
@@ -581,7 +600,7 @@ public class XMLStreamParser<@NonNull T> {
       protected void parseChildren(final XMLEventReader reader, final @Nullable ElementParser<?> terminatingParser) throws ParsingException {
         XMLEvent event = getNextEvent(reader, terminatingParser);
         while (!event.isEndElement()) {
-          final Optional<ContentParser<?,?>> parser = findChildParserFor(event);
+          final Optional<? extends ContentParser<?,?>> parser = findChildParserFor(event);
           if (parser.isPresent()) {
             final Object child = parser.get().parse(this, parser.get().eventClass.cast(event), reader, terminatingParser);
             final List<Object> existingValues = childValues.get(parser.get());
@@ -645,7 +664,7 @@ public class XMLStreamParser<@NonNull T> {
 
   protected static class ContainerElementParser extends ElementParser<StartElement> {
 
-    public ContainerElementParser(final QName name, final @NonNull ContentParser<?,?> @Nullable... childParsers) {
+    public ContainerElementParser(final QName name, final @NonNull ElementParser<?> @Nullable... childParsers) {
       super(StartElement.class, name, (context) -> context.event(), false, childParsers);
       return;
     }
@@ -680,20 +699,140 @@ public class XMLStreamParser<@NonNull T> {
 
   } // StringElementParser
 
-  public static class SchemaBuilder<@NonNull SB extends SchemaBuilder<?>> {
-    protected final Class<? extends SB> builderType;
+  protected static class InjectedElementParser<@NonNull T> extends ElementParser<T> {
+    protected static final DSLContext DSL_CONTEXT = DSL.using(SQLDialect.DEFAULT);
+
+    public InjectedElementParser(final Class<T> targetClass, final QName elementName, final boolean saveTargetValue, final Map<String,? extends ChildSpec<T,?>> childParsers) throws IllegalArgumentException {
+      super(targetClass, elementName, (ctx) -> inject(targetClass, ctx, childParsers), saveTargetValue, childParsers.values().stream().map(ChildSpec::getParsers).flatMap(Set::stream).collect(Collectors.toSet()));
+      return;
+    }
+
+    protected static final <@NonNull T> T inject(final Class<? extends T> targetClass, final ElementParsingContext<T> ctx, final Map<String,? extends ChildSpec<T,?>> childParsers) throws ElementValueParsingException {
+      final Map<String,Field<Object>> fields = Stream.concat(ctx.attrs().keySet().stream(), childParsers.keySet().stream()).map((name) -> new AbstractMap.SimpleImmutableEntry<>(name, DSL.field(DSL.name(name)))).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+      final Record record = DSL_CONTEXT.newRecord(fields.values().stream().toArray(Field<?>[]::new));
+      ctx.attrs().entrySet().stream().forEach((attr) -> record.<Object> set(Objects.requireNonNull(fields.get(attr.getKey())), attr.getValue()));
+      childParsers.entrySet().stream().forEach((child) -> record.<Object> set(Objects.requireNonNull(fields.get(child.getKey())), child.getValue().apply(ctx)));
+      try {
+        return record.into(targetClass);
+      } catch (MappingException me) {
+        throw new ElementValueParsingException(me, cast(ctx));
+      }
+    }
+
+    protected static abstract class ChildSpec<@NonNull ET,@NonNull CT> implements Function<ElementParsingContext<ET>,@Nullable Object> {
+      protected final QName elementName;
+      protected final Class<CT> targetClass;
+      protected final Set<ElementParser<? extends CT>> parsers = new CopyOnWriteArraySet<>();
+
+      protected ChildSpec(final QName elementName, final Class<CT> targetClass) {
+        this.elementName = Objects.requireNonNull(elementName);
+        this.targetClass = Objects.requireNonNull(targetClass);
+        return;
+      }
+
+      public final QName getElementName() {
+        return elementName;
+      }
+
+      public Class<CT> getTargetClass() {
+        return targetClass;
+      }
+
+      @SuppressWarnings("unchecked")
+      protected void addParser(final ElementParser<?> parser) throws IllegalArgumentException {
+        if (!elementName.equals(parser.getElementName())) throw new IllegalArgumentException("Conflicting parser element names: '" + elementName + "', '" + parser.getElementName() + "'");
+        if (!targetClass.isAssignableFrom(parser.getTargetClass())) throw new IllegalArgumentException("Conflicting parser target types: '" + targetClass + "', '" + parser.getTargetClass() + "'");
+        parsers.add((ElementParser<? extends @NonNull CT>)parser);
+        return;
+      }
+
+      public Set<ElementParser<? extends CT>> getParsers() {
+        return Collections.unmodifiableSet(parsers);
+      }
+
+    } // InjectedElementParser.ChildSpec
+
+    protected static class SingleValuedChildSpec<@NonNull ET,@NonNull CT> extends ChildSpec<ET,CT> {
+
+      protected SingleValuedChildSpec(final QName elementName, final Class<CT> targetClass) {
+        super(elementName, targetClass);
+        return;
+      }
+
+      @Override
+      public @Nullable Object apply(final ElementParsingContext<ET> ctx) {
+        return ctx.childNull(elementName, targetClass);
+      }
+
+    } // InjectedElementParser.SingleValuedChildSpec
+
+    protected static abstract class MultiValuedChildSpec<@NonNull ET,@NonNull CT> extends ChildSpec<ET,CT> {
+
+      protected MultiValuedChildSpec(final QName elementName, final Class<CT> targetClass) {
+        super(elementName, targetClass);
+        return;
+      }
+
+    } // InjectedElementParser.MultiValuedChildSpec
+
+    protected static class ArrayChildSpec<@NonNull ET,@NonNull CT> extends MultiValuedChildSpec<ET,CT> {
+
+      protected ArrayChildSpec(final QName elementName, final Class<CT> targetClass) {
+        super(elementName, targetClass);
+        return;
+      }
+
+      @Override
+      public @Nullable Object apply(final ElementParsingContext<ET> ctx) {
+        return ctx.children(elementName, targetClass).toArray((n) -> (Object[])java.lang.reflect.Array.newInstance(targetClass, n));
+      }
+
+    } // InjectedElementParser.ArrayChildSpec
+
+    protected static class ListChildSpec<@NonNull ET,@NonNull CT> extends MultiValuedChildSpec<ET,CT> {
+
+      protected ListChildSpec(final QName elementName, final Class<CT> targetClass) {
+        super(elementName, targetClass);
+        return;
+      }
+
+      @Override
+      public @Nullable Object apply(final ElementParsingContext<ET> ctx) {
+        return ctx.children(elementName, targetClass).collect(Collectors.toList());
+      }
+
+    } // InjectedElementParser.ListChildSpec
+
+    protected static class SetChildSpec<@NonNull ET,@NonNull CT> extends MultiValuedChildSpec<ET,CT> {
+
+      protected SetChildSpec(final QName elementName, final Class<CT> targetClass) {
+        super(elementName, targetClass);
+        return;
+      }
+
+      @Override
+      public @Nullable Object apply(final ElementParsingContext<ET> ctx) {
+        return ctx.children(elementName, targetClass).collect(Collectors.toSet());
+      }
+
+    } // InjectedElementParser.SetChildSpec
+
+  } // InjectedElementParser
+
+  public static class SchemaBuilder<@NonNull SB extends SchemaBuilder<@NonNull ?>> {
+    protected final Class<? extends SB> schemaBuilderType;
     protected final @Nullable URI namespace;
     protected final Map<QName,ElementParser<?>> elementParsers;
 
-    protected SchemaBuilder(final Class<? extends SB> builderType, final @Nullable URI namespace, final @Nullable Map<QName,ElementParser<?>> elementParsers) {
-      this.builderType = Objects.requireNonNull(builderType);
+    protected SchemaBuilder(final Class<? extends SB> schemaBuilderType, final @Nullable URI namespace, final @Nullable Map<QName,ElementParser<?>> elementParsers) {
+      this.schemaBuilderType = Objects.requireNonNull(schemaBuilderType);
       this.namespace = namespace;
       this.elementParsers = (elementParsers != null) ? new HashMap<>(elementParsers) : new HashMap<>();
       return;
     }
 
     protected SB forkImpl(final @Nullable URI namespace) {
-      return builderType.cast(new SchemaBuilder<SB>(builderType, namespace, elementParsers));
+      return schemaBuilderType.cast(new SchemaBuilder<SB>(schemaBuilderType, namespace, elementParsers));
     }
 
     public final SB fork() {
@@ -715,7 +854,7 @@ public class XMLStreamParser<@NonNull T> {
     protected SB add(final ElementParser<?> elementParser) {
       if (elementParsers.containsKey(elementParser.getElementName())) throw new IllegalArgumentException("Attempt to add duplicate '" + elementParser.getElementName() + "' parser");
       elementParsers.put(elementParser.getElementName(), elementParser);
-      return builderType.cast(this);
+      return schemaBuilderType.cast(this);
     }
 
     protected final <E extends ElementParser<?>> E getParser(final Class<E> type, final QName name) throws NoSuchElementException, ClassCastException {
@@ -766,6 +905,15 @@ public class XMLStreamParser<@NonNull T> {
       return string(localName, false);
     }
 
+    @SuppressWarnings("unchecked")
+    public final <@NonNull ET> InjectedElementBuilder<ET,@NonNull ? extends InjectedElementBuilder<ET,@NonNull ?>> injected(final QName name, final Class<ET> targetClass, final boolean saveTargetValue) {
+      return new InjectedElementBuilder<>((Class<InjectedElementBuilder<ET,?>>)(Object)InjectedElementBuilder.class, name, targetClass, saveTargetValue);
+    }
+
+    public final <@NonNull ET> InjectedElementBuilder<ET,@NonNull ? extends InjectedElementBuilder<ET,@NonNull ?>> injected(final String localName, final Class<ET> targetClass, final boolean saveTargetValue) {
+      return injected(qn(localName), targetClass, saveTargetValue);
+    }
+
     public <@NonNull T> XMLStreamParser<T> parser(final Class<T> targetClass, final QName documentElementName, final QName targetElementName) throws NoSuchElementException, ClassCastException {
       return new XMLStreamParser<T>(targetClass, elementParsers.values(), documentElementName, targetElementName);
     }
@@ -773,6 +921,73 @@ public class XMLStreamParser<@NonNull T> {
     public <@NonNull T> XMLStreamParser<T> parser(final Class<T> targetClass, final String documentParserName, final String targetParserName) throws NoSuchElementException, ClassCastException {
       return parser(targetClass, qn(documentParserName), qn(targetParserName));
     }
+
+    public class InjectedElementBuilder<@NonNull ET,@NonNull EB extends InjectedElementBuilder<ET,@NonNull ?>> {
+      protected final Class<? extends EB> elementBuilderType;
+      protected final QName elementName;
+      protected final Class<ET> targetClass;
+      protected final boolean saveTargetValue;
+      protected final Map<String,InjectedElementParser.ChildSpec<ET,?>> childParsers = new ConcurrentHashMap<>();
+
+      protected InjectedElementBuilder(final Class<? extends EB> elementBuilderType, final QName elementName, final Class<ET> targetClass, final boolean saveTargetValue) {
+        this.elementBuilderType = Objects.requireNonNull(elementBuilderType);
+        this.elementName = Objects.requireNonNull(elementName);
+        this.targetClass = Objects.requireNonNull(targetClass);
+        this.saveTargetValue = saveTargetValue;
+        return;
+      }
+
+      protected <@NonNull CT> EB addParser(final String fieldName, final QName childElementName, final Function<Class<CT>,InjectedElementParser.ChildSpec<ET,CT>> childSpecCreator) throws NoSuchElementException, IllegalArgumentException {
+        final ElementParser<?> childParser = getParser(ElementParser.WILDCARD_CLASS, childElementName);
+        final InjectedElementParser.ChildSpec<ET,?> existingChildSpec = childParsers.get(fieldName);
+        if (existingChildSpec != null) {
+          existingChildSpec.addParser(childParser);
+        } else {
+          @SuppressWarnings("unchecked")
+          final InjectedElementParser.ChildSpec<ET,?> newChildSpec = childSpecCreator.apply((Class<CT>)childParser.getTargetClass());
+          newChildSpec.addParser(childParser);
+          childParsers.put(fieldName, newChildSpec);
+        }
+        return elementBuilderType.cast(this);
+      }
+
+      public EB child(final String fieldName, final QName childElementName) throws NoSuchElementException, IllegalArgumentException {
+        return addParser(fieldName, childElementName, (targetClass) -> new InjectedElementParser.SingleValuedChildSpec<>(childElementName, targetClass));
+      }
+
+      public EB child(final String fieldName, final String childElementName) throws NoSuchElementException, IllegalArgumentException {
+        return child(fieldName, qn(childElementName));
+      }
+
+      public EB array(final String fieldName, final QName childElementName) throws NoSuchElementException, IllegalArgumentException {
+        return addParser(fieldName, childElementName, (targetClass) -> new InjectedElementParser.ArrayChildSpec<>(childElementName, targetClass));
+      }
+
+      public EB array(final String fieldName, final String childElementName) throws NoSuchElementException, IllegalArgumentException {
+        return array(fieldName, qn(childElementName));
+      }
+
+      public EB list(final String fieldName, final QName childElementName) throws NoSuchElementException, IllegalArgumentException {
+        return addParser(fieldName, childElementName, (targetClass) -> new InjectedElementParser.ListChildSpec<>(childElementName, targetClass));
+      }
+
+      public EB list(final String fieldName, final String childElementName) throws NoSuchElementException, IllegalArgumentException {
+        return list(fieldName, qn(childElementName));
+      }
+
+      public EB set(final String fieldName, final QName childElementName) throws NoSuchElementException, IllegalArgumentException {
+        return addParser(fieldName, childElementName, (targetClass) -> new InjectedElementParser.SetChildSpec<>(childElementName, targetClass));
+      }
+
+      public EB set(final String fieldName, final String childElementName) throws NoSuchElementException, IllegalArgumentException {
+        return set(fieldName, qn(childElementName));
+      }
+
+      public SB build() {
+        return add(new InjectedElementParser<ET>(targetClass, elementName, saveTargetValue, childParsers));
+      }
+
+    } // SchemaBuilder.InjectedElementBuilder
 
   } // SchemaBuilder
 

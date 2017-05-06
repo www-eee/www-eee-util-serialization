@@ -110,10 +110,15 @@ public class SOAPStreamParserTest {
     private final String departing;
     private final LocalDate date;
 
-    @ConstructorProperties({ "Departing", "Date" })
     public Departure(final String departing, final LocalDate date) {
       this.departing = departing;
       this.date = date;
+      return;
+    }
+
+    @ConstructorProperties({ "Departing", "DepartureMonthDay", "DepartureYear" })
+    public Departure(final String departing, final MonthDay departureMonthDay, final @Nullable Year departureYear) {
+      this(departing, departureMonthDay.atYear((departureYear != null) ? departureYear.getValue() : LocalDateTime.now().getYear()));
       return;
     }
 

@@ -63,13 +63,13 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
   }
 
   @SuppressWarnings("unchecked")
-  public static SchemaBuilder<? extends SchemaBuilder<?>> create(final @Nullable URI namespace) {
+  public static SchemaBuilder<@NonNull ? extends SchemaBuilder<@NonNull ?>> create(final @Nullable URI namespace) {
     return new SchemaBuilder<>((Class<SchemaBuilder<?>>)(Object)SchemaBuilder.class, namespace, null);
   }
 
   protected static class HeaderElementParser extends ContainerElementParser {
 
-    public HeaderElementParser(final @NonNull ContentParser<?,?> @Nullable... childParsers) {
+    public HeaderElementParser(final @NonNull ElementParser<?> @Nullable... childParsers) {
       super(HEADER_QNAME, childParsers);
       return;
     }
@@ -99,7 +99,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
 
   } // EnvelopeElementParser
 
-  public static class SchemaBuilder<@NonNull SB extends SchemaBuilder<?>> extends XMLStreamParser.SchemaBuilder<SB> {
+  public static class SchemaBuilder<@NonNull SB extends SchemaBuilder<@NonNull ?>> extends XMLStreamParser.SchemaBuilder<SB> {
 
     protected SchemaBuilder(final Class<? extends SB> builderType, final @Nullable URI namespace, final @Nullable Map<QName,ElementParser<?>> elementParsers) {
       super(builderType, namespace, elementParsers);
@@ -109,7 +109,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
 
     @Override
     protected SB forkImpl(final @Nullable URI namespace) {
-      return builderType.cast(new SchemaBuilder<SB>(builderType, namespace, elementParsers));
+      return schemaBuilderType.cast(new SchemaBuilder<SB>(schemaBuilderType, namespace, elementParsers));
     }
 
     public final SB header(final @NonNull QName... childElementNames) throws NoSuchElementException, ClassCastException {
