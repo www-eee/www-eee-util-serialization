@@ -930,6 +930,10 @@ public class XMLStreamParser<@NonNull T> {
       return injected(qn(localName), targetClass);
     }
 
+    public final <@NonNull ET> SB injected(final Class<ET> targetClass) {
+      return injected(targetClass.getSimpleName(), targetClass);
+    }
+
     @SuppressWarnings("unchecked")
     public final <@NonNull ET> InjectedElementBuilder<ET,@NonNull ? extends InjectedElementBuilder<ET,@NonNull ?>> injectedBuilder(final QName elementName, final Class<ET> targetClass) {
       return new InjectedElementBuilder<>((Class<InjectedElementBuilder<ET,?>>)(Object)InjectedElementBuilder.class, elementName, targetClass);
@@ -937,6 +941,10 @@ public class XMLStreamParser<@NonNull T> {
 
     public final <@NonNull ET> InjectedElementBuilder<ET,@NonNull ? extends InjectedElementBuilder<ET,@NonNull ?>> injectedBuilder(final String localName, final Class<ET> targetClass) {
       return injectedBuilder(qn(localName), targetClass);
+    }
+
+    public final <@NonNull ET> InjectedElementBuilder<ET,@NonNull ? extends InjectedElementBuilder<ET,@NonNull ?>> injectedBuilder(final Class<ET> targetClass) {
+      return injectedBuilder(targetClass.getSimpleName(), targetClass);
     }
 
     public <@NonNull T> XMLStreamParser<T> parser(final Class<T> targetClass, final QName documentElementName, final QName targetElementName) throws NoSuchElementException, ClassCastException {

@@ -112,7 +112,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
       return schemaBuilderType.cast(new SchemaBuilder<SB>(schemaBuilderType, namespace, elementParsers));
     }
 
-    public final SB header(final @NonNull QName... childElementNames) throws NoSuchElementException, ClassCastException {
+    public final SB header(final @NonNull QName @Nullable... childElementNames) throws NoSuchElementException, ClassCastException {
       return add(new HeaderElementParser(getParsers(childElementNames)));
     }
 
