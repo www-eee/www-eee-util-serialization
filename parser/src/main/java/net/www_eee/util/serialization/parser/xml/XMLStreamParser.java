@@ -37,19 +37,13 @@ import org.jooq.impl.*;
 public class XMLStreamParser<@NonNull T> {
   private static final XMLInputFactory XML_INPUT_FACTORY = XMLInputFactory.newInstance();
   protected final Class<T> targetClass;
-  protected final Map<QName,ElementParser<?>> elementParsers;
   private final ElementParser<?> documentParser;
   private final ElementParser<T> targetParser;
 
-  protected XMLStreamParser(final Class<T> targetClass, final Collection<ElementParser<?>> elementParsers, final QName documentElementName, final QName targetElementName) throws NoSuchElementException, ClassCastException {
+  protected XMLStreamParser(final Class<T> targetClass, final ElementParser<?> documentParser, final ElementParser<T> targetParser) {
     this.targetClass = Objects.requireNonNull(targetClass, "null targetClass");
-    this.elementParsers = Collections.unmodifiableMap(new ConcurrentHashMap<>(Objects.requireNonNull(elementParsers, "null elementParsers").stream().collect(Collectors.<ElementParser<?>,QName,ElementParser<?>> toMap(ElementParser::getElementName, Function.identity()))));
-    this.documentParser = Optional.ofNullable(this.elementParsers.get(Objects.requireNonNull(documentElementName, "null documentElementName"))).orElseThrow(() -> new NoSuchElementException("No parser supplied for document element " + documentElementName));
-    final ElementParser<?> tp1 = Optional.ofNullable(this.elementParsers.get(Objects.requireNonNull(targetElementName, "null targetElementName"))).orElseThrow(() -> new NoSuchElementException("No parser supplied for target element " + targetElementName));
-    if (!targetClass.isAssignableFrom(tp1.getTargetClass())) throw new ClassCastException("Specified target parser results ('" + tp1.getTargetClass() + "') are incompatible with target class ('" + targetClass + "')");
-    @SuppressWarnings("unchecked")
-    final ElementParser<T> tp2 = (ElementParser<T>)tp1;
-    this.targetParser = tp2;
+    this.documentParser = Objects.requireNonNull(documentParser, "null documentParser");
+    this.targetParser = Objects.requireNonNull(targetParser, "null targetParser");
     return;
   }
 
@@ -137,125 +131,125 @@ public class XMLStreamParser<@NonNull T> {
       return Collections.unmodifiableMap(StreamSupport.stream(Spliterators.spliteratorUnknownSize((Iterator<Attribute>)event().getAttributes(), Spliterator.NONNULL | Spliterator.DISTINCT | Spliterator.IMMUTABLE), false).map((attr) -> new AbstractMap.SimpleImmutableEntry<>(attr.getName().getLocalPart(), attr.getValue())).collect(Collectors.<Map.Entry<String,String>,String,String> toMap(Map.Entry::getKey, Map.Entry::getValue)));
     }
 
-    public default @Nullable String attrNull(final QName name) {
-      final @Nullable Attribute attr = event().getAttributeByName(name);
+    public default @Nullable String attrNull(final QName attrName) {
+      final @Nullable Attribute attr = event().getAttributeByName(attrName);
       return (attr != null) ? attr.getValue() : null;
     }
 
-    public default <A> @Nullable A attrNull(final QName name, final Function<? super String,? extends A> targetFunction) {
-      final @Nullable String attr = attrNull(name);
+    public default <A> @Nullable A attrNull(final QName attrName, final Function<? super String,? extends A> targetFunction) {
+      final @Nullable String attr = attrNull(attrName);
       return (attr != null) ? targetFunction.apply(attr) : null;
     }
 
-    public default @Nullable String attrNull(final String localName) {
-      return attrNull(new QName(XMLConstants.NULL_NS_URI, localName));
+    public default @Nullable String attrNull(final String attrLocalName) {
+      return attrNull(new QName(XMLConstants.NULL_NS_URI, attrLocalName));
     }
 
-    public default <A> @Nullable A attrNull(final String localName, final Function<? super String,? extends A> targetFunction) {
-      final @Nullable String attr = attrNull(localName);
+    public default <A> @Nullable A attrNull(final String attrLocalName, final Function<? super String,? extends A> targetFunction) {
+      final @Nullable String attr = attrNull(attrLocalName);
       return (attr != null) ? targetFunction.apply(attr) : null;
     }
 
-    public default Optional<String> attrOpt(final QName name) {
-      return Optional.ofNullable(event().getAttributeByName(name)).map(Attribute::getValue);
+    public default Optional<String> attrOpt(final QName attrName) {
+      return Optional.ofNullable(event().getAttributeByName(attrName)).map(Attribute::getValue);
     }
 
-    public default <A> Optional<A> attrOpt(final QName name, final Function<? super String,? extends A> targetFunction) {
-      return attrOpt(name).map(targetFunction);
+    public default <A> Optional<A> attrOpt(final QName attrName, final Function<? super String,? extends A> targetFunction) {
+      return attrOpt(attrName).map(targetFunction);
     }
 
-    public default Optional<String> attrOpt(final String localName) {
-      return attrOpt(new QName(XMLConstants.NULL_NS_URI, localName));
+    public default Optional<String> attrOpt(final String attrLocalName) {
+      return attrOpt(new QName(XMLConstants.NULL_NS_URI, attrLocalName));
     }
 
-    public default <A> Optional<A> attrOpt(final String localName, final Function<? super String,? extends A> targetFunction) {
-      return attrOpt(localName).map(targetFunction);
+    public default <A> Optional<A> attrOpt(final String attrLocalName, final Function<? super String,? extends A> targetFunction) {
+      return attrOpt(attrLocalName).map(targetFunction);
     }
 
-    public default String attr(final QName name) throws NoSuchElementException {
-      return attrOpt(name).orElseThrow(() -> new NoSuchElementException("Element '" + name().getLocalPart() + "' has no '" + name.getLocalPart() + "' attribute"));
+    public default String attr(final QName attrName) throws NoSuchElementException {
+      return attrOpt(attrName).orElseThrow(() -> new NoSuchElementException("Element '" + name().getLocalPart() + "' has no '" + attrName.getLocalPart() + "' attribute"));
     }
 
-    public default <A> A attr(final QName name, final Function<? super String,? extends A> targetFunction) throws NoSuchElementException {
-      return targetFunction.apply(attr(name));
+    public default <A> A attr(final QName attrName, final Function<? super String,? extends A> targetFunction) throws NoSuchElementException {
+      return targetFunction.apply(attr(attrName));
     }
 
-    public default String attr(final String localName) throws NoSuchElementException {
-      return attr(new QName(XMLConstants.NULL_NS_URI, localName));
+    public default String attr(final String attrLocalName) throws NoSuchElementException {
+      return attr(new QName(XMLConstants.NULL_NS_URI, attrLocalName));
     }
 
-    public default <A> A attr(final String localName, final Function<? super String,? extends A> targetFunction) throws NoSuchElementException {
-      return targetFunction.apply(attr(localName));
+    public default <A> A attr(final String attrLocalName, final Function<? super String,? extends A> targetFunction) throws NoSuchElementException {
+      return targetFunction.apply(attr(attrLocalName));
     }
 
     public Deque<StartElement> eventStack();
 
-    public <@NonNull S> Stream<S> saved(final @Nullable QName name, final Class<S> valueClass);
+    public <@NonNull S> Stream<S> saved(final @Nullable QName savedElementName, final Class<S> savedElementTargetClass);
 
-    public default <@NonNull S> Stream<S> saved(final @Nullable String localName, final Class<S> valueClass) {
-      return saved((localName != null) ? new QName(ns(), localName) : null, valueClass);
+    public default <@NonNull S> Stream<S> saved(final @Nullable String savedElementLocalName, final Class<S> savedElementTargetClass) {
+      return saved((savedElementLocalName != null) ? new QName(ns(), savedElementLocalName) : null, savedElementTargetClass);
     }
 
-    public default <@NonNull S> Optional<S> savedFirstOpt(final @Nullable QName name, final Class<S> valueClass) throws NoSuchElementException {
-      return saved(name, valueClass).findFirst();
+    public default <@NonNull S> Optional<S> savedFirstOpt(final @Nullable QName savedElementName, final Class<S> savedElementTargetClass) throws NoSuchElementException {
+      return saved(savedElementName, savedElementTargetClass).findFirst();
     }
 
-    public default <@NonNull S> Optional<S> savedFirstOpt(final @Nullable String localName, final Class<S> valueClass) throws NoSuchElementException {
-      return savedFirstOpt((localName != null) ? new QName(ns(), localName) : null, valueClass);
+    public default <@NonNull S> Optional<S> savedFirstOpt(final @Nullable String savedElementLocalName, final Class<S> savedElementTargetClass) throws NoSuchElementException {
+      return savedFirstOpt((savedElementLocalName != null) ? new QName(ns(), savedElementLocalName) : null, savedElementTargetClass);
     }
 
-    public default <@NonNull S> @Nullable S savedFirstNull(final @Nullable QName name, final Class<S> valueClass) throws NoSuchElementException {
-      final Optional<S> saved = savedFirstOpt(name, valueClass);
+    public default <@NonNull S> @Nullable S savedFirstNull(final @Nullable QName savedElementName, final Class<S> savedElementTargetClass) throws NoSuchElementException {
+      final Optional<S> saved = savedFirstOpt(savedElementName, savedElementTargetClass);
       return saved.isPresent() ? saved.get() : null;
     }
 
-    public default <@NonNull S> @Nullable S savedFirstNull(final @Nullable String localName, final Class<S> valueClass) throws NoSuchElementException {
-      final Optional<S> saved = savedFirstOpt(localName, valueClass);
+    public default <@NonNull S> @Nullable S savedFirstNull(final @Nullable String savedElementLocalName, final Class<S> savedElementTargetClass) throws NoSuchElementException {
+      final Optional<S> saved = savedFirstOpt(savedElementLocalName, savedElementTargetClass);
       return saved.isPresent() ? saved.get() : null;
     }
 
-    public default <@NonNull S> S savedFirst(final @Nullable QName name, final Class<S> valueClass) throws NoSuchElementException {
-      return savedFirstOpt(name, valueClass).orElseThrow(() -> new NoSuchElementException("No " + ((name != null) ? "'" + name.getLocalPart() + "' " : "") + " saved element with '" + valueClass.getSimpleName() + "' type value found"));
+    public default <@NonNull S> S savedFirst(final @Nullable QName savedElementName, final Class<S> savedElementTargetClass) throws NoSuchElementException {
+      return savedFirstOpt(savedElementName, savedElementTargetClass).orElseThrow(() -> new NoSuchElementException("No " + ((savedElementName != null) ? "'" + savedElementName.getLocalPart() + "' " : "") + " saved element with '" + savedElementTargetClass.getSimpleName() + "' target class found"));
     }
 
-    public default <@NonNull S> S savedFirst(final @Nullable String localName, final Class<S> valueClass) throws NoSuchElementException {
-      return savedFirst((localName != null) ? new QName(ns(), localName) : null, valueClass);
+    public default <@NonNull S> S savedFirst(final @Nullable String savedElementLocalName, final Class<S> savedElementTargetClass) throws NoSuchElementException {
+      return savedFirst((savedElementLocalName != null) ? new QName(ns(), savedElementLocalName) : null, savedElementTargetClass);
     }
 
     public Stream<Map.Entry<Map.Entry<QName,Class<?>>,List<?>>> children();
 
-    public default <@NonNull ET> Stream<ET> children(final @Nullable QName name, final Class<ET> valueClass) {
-      return children().filter((entry) -> (name == null) || (name.equals(entry.getKey().getKey()))).filter((entry) -> valueClass.isAssignableFrom(entry.getKey().getValue())).<List<?>> map(Map.Entry::getValue).flatMap(List::stream).map((value) -> valueClass.cast(value));
+    public default <@NonNull ET> Stream<ET> children(final @Nullable QName childElementName, final Class<ET> childElementTargetClass) {
+      return children().filter((entry) -> (childElementName == null) || (childElementName.equals(entry.getKey().getKey()))).filter((entry) -> childElementTargetClass.isAssignableFrom(entry.getKey().getValue())).<List<?>> map(Map.Entry::getValue).flatMap(List::stream).map((value) -> childElementTargetClass.cast(value));
     }
 
-    public default <@NonNull ET> Stream<ET> children(final @Nullable String localName, final Class<ET> valueClass) {
-      return children((localName != null) ? new QName(ns(), localName) : null, valueClass);
+    public default <@NonNull ET> Stream<ET> children(final @Nullable String childElementLocalName, final Class<ET> childElementTargetClass) {
+      return children((childElementLocalName != null) ? new QName(ns(), childElementLocalName) : null, childElementTargetClass);
     }
 
-    public default <@NonNull ET> Optional<ET> childOpt(final @Nullable QName name, final Class<ET> valueClass) {
-      return children(name, valueClass).findFirst();
+    public default <@NonNull ET> Optional<ET> childOpt(final @Nullable QName childElementName, final Class<ET> childElementTargetClass) {
+      return children(childElementName, childElementTargetClass).findFirst();
     }
 
-    public default <@NonNull ET> Optional<ET> childOpt(final @Nullable String localName, final Class<ET> valueClass) {
-      return childOpt((localName != null) ? new QName(ns(), localName) : null, valueClass);
+    public default <@NonNull ET> Optional<ET> childOpt(final @Nullable String childElementLocalName, final Class<ET> childElementTargetClass) {
+      return childOpt((childElementLocalName != null) ? new QName(ns(), childElementLocalName) : null, childElementTargetClass);
     }
 
-    public default <@NonNull ET> @Nullable ET childNull(final @Nullable QName name, final Class<ET> valueClass) {
-      final Optional<ET> child = childOpt(name, valueClass);
+    public default <@NonNull ET> @Nullable ET childNull(final @Nullable QName childElementName, final Class<ET> childElementTargetClass) {
+      final Optional<ET> child = childOpt(childElementName, childElementTargetClass);
       return child.isPresent() ? child.get() : null;
     }
 
-    public default <@NonNull ET> @Nullable ET childNull(final @Nullable String localName, final Class<ET> valueClass) {
-      final Optional<ET> child = childOpt(localName, valueClass);
+    public default <@NonNull ET> @Nullable ET childNull(final @Nullable String childElementLocalName, final Class<ET> childElementTargetClass) {
+      final Optional<ET> child = childOpt(childElementLocalName, childElementTargetClass);
       return child.isPresent() ? child.get() : null;
     }
 
-    public default <@NonNull ET> ET child(final @Nullable QName name, final Class<ET> valueClass) throws NoSuchElementException {
-      return childOpt(name, valueClass).orElseThrow(() -> new NoSuchElementException("No " + ((name != null) ? "'" + name.getLocalPart() + "' " : "") + " child element with '" + valueClass.getSimpleName() + "' type value found"));
+    public default <@NonNull ET> ET child(final @Nullable QName childElementName, final Class<ET> childElementTargetClass) throws NoSuchElementException {
+      return childOpt(childElementName, childElementTargetClass).orElseThrow(() -> new NoSuchElementException("No " + ((childElementName != null) ? "'" + childElementName.getLocalPart() + "' " : "") + " child element with '" + childElementTargetClass.getSimpleName() + "' target class found"));
     }
 
-    public default <@NonNull ET> ET child(final @Nullable String localName, final Class<ET> valueClass) throws NoSuchElementException {
-      return child((localName != null) ? new QName(ns(), localName) : null, valueClass);
+    public default <@NonNull ET> ET child(final @Nullable String childElementLocalName, final Class<ET> childElementTargetClass) throws NoSuchElementException {
+      return child((childElementLocalName != null) ? new QName(ns(), childElementLocalName) : null, childElementTargetClass);
     }
 
   } // ElementParsingContext
@@ -483,7 +477,7 @@ public class XMLStreamParser<@NonNull T> {
 
   protected static class ElementParser<@NonNull T> extends ContentParser<StartElement,T> {
     @SuppressWarnings("unchecked")
-    private static final Class<ElementParser<?>> WILDCARD_CLASS = (Class<ElementParser<?>>)(Object)ElementParser.class;
+    public static final Class<ElementParser<?>> WILDCARD_CLASS = (Class<ElementParser<?>>)(Object)ElementParser.class;
     protected final QName elementName;
     private final Function<ElementParsingContext<T>,T> targetFunction;
     protected final boolean saveTargetValue;
@@ -546,8 +540,8 @@ public class XMLStreamParser<@NonNull T> {
       return values.filter((entry) -> ElementParser.class.isInstance(entry.getKey())).<Map.Entry<ElementParser<?>,List<Object>>> map((entry) -> new AbstractMap.SimpleImmutableEntry<>(ElementParser.class.cast(entry.getKey()), entry.getValue()));
     }
 
-    private static final <@NonNull ET> Stream<ET> getElements(final Stream<? extends Map.Entry<? extends ContentParser<?,?>,List<Object>>> values, final @Nullable QName name, final Class<ET> valueClass) {
-      return getElements(values).filter((entry) -> (name == null) || name.equals(entry.getKey().getElementName())).filter((entry) -> valueClass.isAssignableFrom(entry.getKey().getTargetClass())).map(Map.Entry::getValue).flatMap(List::stream).map(valueClass::cast);
+    private static final <@NonNull ET> Stream<ET> getElements(final Stream<? extends Map.Entry<? extends ContentParser<?,?>,List<Object>>> values, final @Nullable QName elementName, final Class<ET> targetClass) {
+      return getElements(values).filter((entry) -> (elementName == null) || elementName.equals(entry.getKey().getElementName())).filter((entry) -> targetClass.isAssignableFrom(entry.getKey().getTargetClass())).map(Map.Entry::getValue).flatMap(List::stream).map(targetClass::cast);
     }
 
     public final class ParsingContextImpl implements ElementParsingContext<T> {
@@ -645,30 +639,30 @@ public class XMLStreamParser<@NonNull T> {
         return;
       }
 
-      public <@NonNull S> Stream<S> saved(final ElementParser<S> parser) {
+      public <@NonNull S> Stream<S> saved(final ElementParser<S> savedElementParser) {
         final List<Object> values = savedValues.get(ElementParser.this);
-        return (values != null) ? values.stream().map(parser.getTargetClass()::cast) : Stream.empty();
+        return (values != null) ? values.stream().map(savedElementParser.getTargetClass()::cast) : Stream.empty();
       }
 
-      public <@NonNull S> S savedFirst(final ElementParser<S> parser) throws NoSuchElementException {
-        return saved(parser).findFirst().orElseThrow(() -> new NoSuchElementException(ElementParser.this.toString()));
+      public <@NonNull S> S savedFirst(final ElementParser<S> savedElementParser) throws NoSuchElementException {
+        return saved(savedElementParser).findFirst().orElseThrow(() -> new NoSuchElementException(ElementParser.this.toString()));
       }
 
-      public <@NonNull ET> Optional<ET> childOpt(final ContentParser<?,ET> parser) {
-        return children(parser).findFirst();
+      public <@NonNull ET> Optional<ET> childOpt(final ContentParser<?,ET> childElementParser) {
+        return children(childElementParser).findFirst();
       }
 
-      public <@NonNull ET> ET child(final ContentParser<?,ET> parser) throws NoSuchElementException {
-        return childOpt(parser).orElseThrow(() -> new NoSuchElementException(parser.toString()));
+      public <@NonNull ET> ET child(final ContentParser<?,ET> childParser) throws NoSuchElementException {
+        return childOpt(childParser).orElseThrow(() -> new NoSuchElementException(childParser.toString()));
       }
 
       @Override
-      public <@NonNull S> Stream<S> saved(final @Nullable QName name, final Class<S> valueClass) {
-        return getElements(savedValues.entrySet().stream(), name, valueClass);
+      public <@NonNull S> Stream<S> saved(final @Nullable QName savedElementName, final Class<S> savedElementTargetClass) {
+        return getElements(savedValues.entrySet().stream(), savedElementName, savedElementTargetClass);
       }
 
-      public <@NonNull ET> Stream<ET> children(final ContentParser<?,ET> parser) {
-        return Optional.ofNullable(childValues.get(parser)).map(List::stream).orElse(Stream.empty()).map((v) -> parser.getTargetClass().cast(v));
+      public <@NonNull ET> Stream<ET> children(final ContentParser<?,ET> childParser) {
+        return Optional.ofNullable(childValues.get(childParser)).map(List::stream).orElse(Stream.empty()).map((v) -> childParser.getTargetClass().cast(v));
       }
 
       @Override
@@ -847,12 +841,12 @@ public class XMLStreamParser<@NonNull T> {
   public static class SchemaBuilder<@NonNull SB extends SchemaBuilder<@NonNull ?>> {
     protected final Class<? extends SB> schemaBuilderType;
     protected final @Nullable URI namespace;
-    protected final Map<QName,ElementParser<?>> elementParsers;
+    protected final Set<ElementParser<?>> elementParsers;
 
-    protected SchemaBuilder(final Class<? extends SB> schemaBuilderType, final @Nullable URI namespace, final @Nullable Map<QName,ElementParser<?>> elementParsers) {
+    protected SchemaBuilder(final Class<? extends SB> schemaBuilderType, final @Nullable URI namespace, final @Nullable Set<ElementParser<?>> elementParsers) {
       this.schemaBuilderType = Objects.requireNonNull(schemaBuilderType);
       this.namespace = namespace;
-      this.elementParsers = (elementParsers != null) ? new HashMap<>(elementParsers) : new HashMap<>();
+      this.elementParsers = (elementParsers != null) ? new HashSet<>(elementParsers) : new HashSet<>();
       return;
     }
 
@@ -877,90 +871,131 @@ public class XMLStreamParser<@NonNull T> {
     }
 
     protected SB add(final ElementParser<?> elementParser) {
-      if (elementParsers.containsKey(elementParser.getElementName())) throw new IllegalArgumentException("Attempt to add duplicate '" + elementParser.getElementName() + "' parser");
-      elementParsers.put(elementParser.getElementName(), elementParser);
+      elementParsers.add(elementParser);
       return schemaBuilderType.cast(this);
     }
 
-    protected final <E extends ElementParser<?>> E getParser(final Class<E> type, final QName name) throws NoSuchElementException, ClassCastException {
-      return type.cast(Optional.ofNullable(elementParsers.get(name)).orElseThrow(() -> new NoSuchElementException("No '" + name + "' parser found")));
-    }
-
-    protected final @NonNull ElementParser<?>[] getParsers(final @NonNull QName @Nullable... names) throws NoSuchElementException, ClassCastException {
-      return ((names != null) ? Arrays.<QName> asList(names) : Collections.<QName> emptyList()).stream().<ElementParser<?>> map((qn) -> getParser(ElementParser.WILDCARD_CLASS, qn)).toArray((n) -> new ElementParser<?>[n]);
-    }
-
-    public final <@NonNull ET> SB element(final String localName, final Class<ET> targetClass, final Function<ElementParsingContext<ET>,ET> targetFunction, final boolean saveTargetValue, final @NonNull QName @Nullable... childElementNames) throws NoSuchElementException, ClassCastException {
-      return add(new ElementParser<ET>(targetClass, qn(localName), targetFunction, saveTargetValue, getParsers(childElementNames)));
-    }
-
-    public final <@NonNull ET> SB element(final String localName, final Class<ET> targetClass, final Function<ElementParsingContext<ET>,ET> targetFunction, final @NonNull String @Nullable... childElementNames) throws NoSuchElementException, ClassCastException {
-      return element(localName, targetClass, targetFunction, false, qns(childElementNames));
-    }
-
-    public final SB container(final String localName, final @NonNull QName... childElementNames) throws NoSuchElementException, ClassCastException {
-      return add(new ContainerElementParser(qn(localName), getParsers(childElementNames)));
-    }
-
-    public final SB container(final String localName, final @NonNull String... childElementNames) throws NoSuchElementException, ClassCastException {
-      return container(localName, qns(childElementNames));
-    }
-
-    public final <@NonNull ET> SB text(final String localName, final Class<ET> targetClass, final Function<String,ET> targetFunction, final boolean saveTargetValue) {
-      return add(new TextElementParser<ET>(targetClass, qn(localName), targetFunction, saveTargetValue));
-    }
-
-    public final <@NonNull ET> SB text(final String localName, final Class<ET> targetClass, final Function<String,ET> targetFunction) {
-      return text(localName, targetClass, targetFunction, false);
-    }
-
-    public final SB string(final String localName, final boolean saveTargetValue) {
-      return add(new StringElementParser(qn(localName), saveTargetValue));
-    }
-
-    public final SB string(final String localName) {
-      return string(localName, false);
-    }
-
-    public final <@NonNull ET> SB injected(final QName elementName, final Class<ET> targetClass) {
-      return add(new InjectedElementParser<ET>(targetClass, elementName, false, null, null));
-    }
-
-    public final <@NonNull ET> SB injected(final String localName, final Class<ET> targetClass) {
-      return injected(qn(localName), targetClass);
-    }
-
-    public final <@NonNull ET> SB injected(final Class<ET> targetClass) {
-      return injected(targetClass.getSimpleName(), targetClass);
+    protected final <@NonNull ET,PT extends ElementParser<?>> PT getParser(final Class<PT> ofParserType, final QName forElementName, final Class<ET> forElementTargetClass) throws NoSuchElementException {
+      final List<ElementParser<?>> parsers = elementParsers.stream().filter((parser) -> ofParserType.isAssignableFrom(parser.getClass())).filter((parser) -> forElementName.equals(parser.getElementName())).filter((parser) -> forElementTargetClass.isAssignableFrom(parser.getTargetClass())).collect(Collectors.toList());
+      if (parsers.isEmpty()) throw new NoSuchElementException("No '" + forElementName.getLocalPart() + "' element found with '" + forElementTargetClass + "' target class");
+      if (parsers.size() > 1) throw new NoSuchElementException("Multiple '" + forElementName.getLocalPart() + "' elements found with '" + forElementTargetClass + "' target class");
+      return ofParserType.cast(parsers.get(0));
     }
 
     @SuppressWarnings("unchecked")
-    public final <@NonNull ET> InjectedElementBuilder<ET,@NonNull ? extends InjectedElementBuilder<ET,@NonNull ?>> injectedBuilder(final QName elementName, final Class<ET> targetClass) {
-      return new InjectedElementBuilder<>((Class<InjectedElementBuilder<ET,?>>)(Object)InjectedElementBuilder.class, elementName, targetClass);
+    protected final <@NonNull ET> ElementParser<ET> getParser(final QName forElementName, final Class<ET> forElementTargetClass) throws NoSuchElementException {
+      return getParser((Class<ElementParser<ET>>)(Object)ElementParser.class, forElementName, forElementTargetClass);
     }
 
-    public final <@NonNull ET> InjectedElementBuilder<ET,@NonNull ? extends InjectedElementBuilder<ET,@NonNull ?>> injectedBuilder(final String localName, final Class<ET> targetClass) {
-      return injectedBuilder(qn(localName), targetClass);
+    protected final <PT extends ElementParser<?>> PT getParser(final Class<PT> ofParserType, final QName forElementName) throws NoSuchElementException {
+      final List<ElementParser<?>> parsers = elementParsers.stream().filter((parser) -> ofParserType.isAssignableFrom(parser.getClass())).filter((parser) -> forElementName.equals(parser.getElementName())).collect(Collectors.toList());
+      if (parsers.isEmpty()) throw new NoSuchElementException("No '" + forElementName.getLocalPart() + "' element found");
+      if (parsers.size() > 1) throw new NoSuchElementException("Multiple '" + forElementName.getLocalPart() + "' elements found");
+      return ofParserType.cast(parsers.get(0));
     }
 
-    public final <@NonNull ET> InjectedElementBuilder<ET,@NonNull ? extends InjectedElementBuilder<ET,@NonNull ?>> injectedBuilder(final Class<ET> targetClass) {
-      return injectedBuilder(targetClass.getSimpleName(), targetClass);
+    protected final ElementParser<?> getParser(final QName forElementName) throws NoSuchElementException {
+      return getParser(ElementParser.WILDCARD_CLASS, forElementName);
     }
 
-    public <@NonNull T> XMLStreamParser<T> parser(final Class<T> targetClass, final QName documentElementName, final QName targetElementName) throws NoSuchElementException, ClassCastException {
-      return new XMLStreamParser<T>(targetClass, elementParsers.values(), documentElementName, targetElementName);
+    public final <@NonNull ET> SB element(final String elementLocalName, final Class<ET> elementTargetClass, final Function<ElementParsingContext<ET>,ET> targetFunction) {
+      return add(new ElementParser<ET>(elementTargetClass, qn(elementLocalName), targetFunction, false));
     }
 
-    public <@NonNull T> XMLStreamParser<T> parser(final Class<T> targetClass, final String documentParserName, final String targetParserName) throws NoSuchElementException, ClassCastException {
-      return parser(targetClass, qn(documentParserName), qn(targetParserName));
+    public final <@NonNull ET> ChildElementListBuilder<SB,?> elementBuilder(final String elementLocalName, final Class<ET> elementTargetClass, final Function<ElementParsingContext<ET>,ET> targetFunction) {
+      return new ChildElementListBuilder<SB,ElementParser<?>>(schemaBuilderType.cast(this), ElementParser.WILDCARD_CLASS, (childParsers) -> add(new ElementParser<ET>(elementTargetClass, qn(elementLocalName), targetFunction, false, childParsers)));
     }
+
+    public final ChildElementListBuilder<SB,?> containerBuilder(final String containerElementLocalName) {
+      return new ChildElementListBuilder<SB,ElementParser<?>>(schemaBuilderType.cast(this), ElementParser.WILDCARD_CLASS, (childParsers) -> add(new ContainerElementParser(qn(containerElementLocalName), childParsers)));
+    }
+
+    public final <@NonNull ET> SB text(final String textElementLocalName, final Class<ET> textElementTargetClass, final Function<String,ET> targetFunction, final boolean saveTargetValue) {
+      return add(new TextElementParser<ET>(textElementTargetClass, qn(textElementLocalName), targetFunction, saveTargetValue));
+    }
+
+    public final <@NonNull ET> SB text(final String textElementLocalName, final Class<ET> textElementTargetClass, final Function<String,ET> targetFunction) {
+      return text(textElementLocalName, textElementTargetClass, targetFunction, false);
+    }
+
+    public final SB string(final String stringElementLocalName, final boolean saveTargetValue) {
+      return add(new StringElementParser(qn(stringElementLocalName), saveTargetValue));
+    }
+
+    public final SB string(final String stringElementLocalName) {
+      return string(stringElementLocalName, false);
+    }
+
+    public final <@NonNull ET> SB injected(final String injectedElementLocalName, final Class<ET> injectedElementTargetClass) {
+      return add(new InjectedElementParser<ET>(injectedElementTargetClass, qn(injectedElementLocalName), false, null, null));
+    }
+
+    public final <@NonNull ET> SB injected(final Class<ET> injectedElementTargetClass) {
+      return injected(injectedElementTargetClass.getSimpleName(), injectedElementTargetClass);
+    }
+
+    @SuppressWarnings("unchecked")
+    public final <@NonNull ET> InjectedElementBuilder<ET,@NonNull ? extends InjectedElementBuilder<ET,@NonNull ?>> injectedBuilder(final String injectedElementLocalName, final Class<ET> injectedElementTargetClass) {
+      return new InjectedElementBuilder<>((Class<InjectedElementBuilder<ET,?>>)(Object)InjectedElementBuilder.class, qn(injectedElementLocalName), injectedElementTargetClass);
+    }
+
+    public final <@NonNull ET> InjectedElementBuilder<ET,@NonNull ? extends InjectedElementBuilder<ET,@NonNull ?>> injectedBuilder(final Class<ET> injectedElementTargetClass) {
+      return injectedBuilder(injectedElementTargetClass.getSimpleName(), injectedElementTargetClass);
+    }
+
+    public <@NonNull T> XMLStreamParser<T> parser(final Class<T> parserTargetClass, final QName documentElementName, final QName targetElementName) throws NoSuchElementException {
+      return new XMLStreamParser<T>(parserTargetClass, getParser(documentElementName), getParser(targetElementName, parserTargetClass));
+    }
+
+    public <@NonNull T> XMLStreamParser<T> parser(final Class<T> parserTargetClass, final String documentParserName, final String targetParserName) throws NoSuchElementException {
+      return parser(parserTargetClass, qn(documentParserName), qn(targetParserName));
+    }
+
+    public final class ChildElementListBuilder<@NonNull PB,@NonNull PT extends ElementParser<?>> {
+      protected final PB parentBuilder;
+      protected final Class<? extends ElementParser<?>> parserType;
+      protected final Consumer<PT[]> consumer;
+      protected final Set<ElementParser<?>> childParsers = new CopyOnWriteArraySet<>();
+
+      public ChildElementListBuilder(final PB parentBuilder, final Class<PT> parserType, final Consumer<PT[]> consumer) {
+        this.parentBuilder = Objects.requireNonNull(parentBuilder);
+        this.parserType = Objects.requireNonNull(parserType);
+        this.consumer = Objects.requireNonNull(consumer);
+        return;
+      }
+
+      public <@NonNull CT> ChildElementListBuilder<PB,PT> child(final QName childElementName, final Class<CT> childElementTargetClass) throws NoSuchElementException {
+        childParsers.add(getParser(parserType, childElementName, childElementTargetClass));
+        return this;
+      }
+
+      public <@NonNull CT> ChildElementListBuilder<PB,PT> child(final String childElementName, final Class<CT> childElementTargetClass) throws NoSuchElementException {
+        return child(qn(childElementName), childElementTargetClass);
+      }
+
+      public ChildElementListBuilder<PB,PT> child(final QName childElementName) throws NoSuchElementException {
+        childParsers.add(getParser(parserType, childElementName));
+        return this;
+      }
+
+      public ChildElementListBuilder<PB,PT> child(final String childElementName) throws NoSuchElementException {
+        return child(qn(childElementName));
+      }
+
+      @SuppressWarnings("unchecked")
+      public PB build() {
+        consumer.accept(childParsers.stream().toArray((n) -> (PT[])java.lang.reflect.Array.newInstance(parserType, n)));
+        return parentBuilder;
+      }
+
+    } // ChildElementListBuilder
 
     public class InjectedElementBuilder<@NonNull ET,@NonNull EB extends InjectedElementBuilder<ET,@NonNull ?>> {
       protected final Class<? extends EB> elementBuilderType;
       protected final QName elementName;
       protected final Class<ET> targetClass;
       protected boolean saveTargetValue = false;
-      protected final Set<ElementParser<?>> childParsers = new HashSet<>();
+      protected final Set<ElementParser<?>> childParsers = new CopyOnWriteArraySet<>();
       protected final Map<String,InjectedElementParser.InjectionSpec<ET,?>> injectionSpecs = new ConcurrentHashMap<>();
 
       protected InjectedElementBuilder(final Class<? extends EB> elementBuilderType, final QName elementName, final Class<ET> targetClass) {
@@ -1004,72 +1039,124 @@ public class XMLStreamParser<@NonNull T> {
         return addAttrInjectionSpec(injectedFieldName, new QName(XMLConstants.NULL_NS_URI, attrName), null);
       }
 
-      @SuppressWarnings("unchecked")
-      protected <@NonNull CT> EB addInjectionSpec(final String injectedFieldName, final QName sourceName, final boolean addChildParser, final Function<Class<CT>,InjectedElementParser.InjectionSpec<ET,CT>> injectionSpecCreator) throws NoSuchElementException {
-        final ElementParser<?> injectedElementParser = getParser(ElementParser.WILDCARD_CLASS, sourceName);
-        if (addChildParser) childParsers.add(injectedElementParser);
-        injectionSpecs.put(injectedFieldName, injectionSpecCreator.apply((Class<CT>)injectedElementParser.getTargetClass()));
+      public <@NonNull CT> EB child(final String injectedFieldName, final QName childElementName, final Class<CT> childElementTargetClass) throws NoSuchElementException {
+        childParsers.add(getParser(childElementName, childElementTargetClass));
+        injectionSpecs.put(injectedFieldName, new InjectedElementParser.ObjectInjectionSpec<>(childElementTargetClass, childElementName, false));
         return elementBuilderType.cast(this);
       }
 
       public EB child(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
-        return addInjectionSpec(injectedFieldName, childElementName, true, (sourceClass) -> new InjectedElementParser.ObjectInjectionSpec<>(sourceClass, childElementName, false));
+        final ElementParser<?> childElementParser = getParser(childElementName);
+        childParsers.add(childElementParser);
+        injectionSpecs.put(injectedFieldName, new InjectedElementParser.ObjectInjectionSpec<>(childElementParser.getTargetClass(), childElementName, false));
+        return elementBuilderType.cast(this);
       }
 
       public EB child(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
         return child(injectedFieldName, qn(childElementName));
       }
 
+      public <@NonNull CT> EB array(final String injectedFieldName, final QName childElementName, final Class<CT> childElementTargetClass) throws NoSuchElementException {
+        childParsers.add(getParser(childElementName, childElementTargetClass));
+        injectionSpecs.put(injectedFieldName, new InjectedElementParser.ArrayInjectionSpec<>(childElementTargetClass, childElementName, false));
+        return elementBuilderType.cast(this);
+      }
+
       public EB array(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
-        return addInjectionSpec(injectedFieldName, childElementName, true, (sourceClass) -> new InjectedElementParser.ArrayInjectionSpec<>(sourceClass, childElementName, false));
+        final ElementParser<?> childElementParser = getParser(childElementName);
+        childParsers.add(childElementParser);
+        injectionSpecs.put(injectedFieldName, new InjectedElementParser.ArrayInjectionSpec<>(childElementParser.getTargetClass(), childElementName, false));
+        return elementBuilderType.cast(this);
       }
 
       public EB array(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
         return array(injectedFieldName, qn(childElementName));
       }
 
+      public <@NonNull CT> EB list(final String injectedFieldName, final QName childElementName, final Class<CT> childElementTargetClass) throws NoSuchElementException {
+        childParsers.add(getParser(childElementName, childElementTargetClass));
+        injectionSpecs.put(injectedFieldName, new InjectedElementParser.ListInjectionSpec<>(childElementTargetClass, childElementName, false));
+        return elementBuilderType.cast(this);
+      }
+
       public EB list(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
-        return addInjectionSpec(injectedFieldName, childElementName, true, (sourceClass) -> new InjectedElementParser.ListInjectionSpec<>(sourceClass, childElementName, false));
+        final ElementParser<?> childElementParser = getParser(childElementName);
+        childParsers.add(childElementParser);
+        injectionSpecs.put(injectedFieldName, new InjectedElementParser.ListInjectionSpec<>(childElementParser.getTargetClass(), childElementName, false));
+        return elementBuilderType.cast(this);
       }
 
       public EB list(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
         return list(injectedFieldName, qn(childElementName));
       }
 
+      public <@NonNull CT> EB set(final String injectedFieldName, final QName childElementName, final Class<CT> childElementTargetClass) throws NoSuchElementException {
+        childParsers.add(getParser(childElementName, childElementTargetClass));
+        injectionSpecs.put(injectedFieldName, new InjectedElementParser.SetInjectionSpec<>(childElementTargetClass, childElementName, false));
+        return elementBuilderType.cast(this);
+      }
+
       public EB set(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
-        return addInjectionSpec(injectedFieldName, childElementName, true, (sourceClass) -> new InjectedElementParser.SetInjectionSpec<>(sourceClass, childElementName, false));
+        final ElementParser<?> childElementParser = getParser(childElementName);
+        childParsers.add(childElementParser);
+        injectionSpecs.put(injectedFieldName, new InjectedElementParser.SetInjectionSpec<>(childElementParser.getTargetClass(), childElementName, false));
+        return elementBuilderType.cast(this);
       }
 
       public EB set(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
         return set(injectedFieldName, qn(childElementName));
       }
 
+      public <@NonNull ST> EB saved(final String injectedFieldName, final QName savedElementName, final Class<ST> savedElementTargetClass) throws NoSuchElementException {
+        injectionSpecs.put(injectedFieldName, new InjectedElementParser.ObjectInjectionSpec<>(savedElementTargetClass, savedElementName, true));
+        return elementBuilderType.cast(this);
+      }
+
       public EB saved(final String injectedFieldName, final QName savedElementName) throws NoSuchElementException {
-        return addInjectionSpec(injectedFieldName, savedElementName, false, (sourceClass) -> new InjectedElementParser.ObjectInjectionSpec<>(sourceClass, savedElementName, true));
+        injectionSpecs.put(injectedFieldName, new InjectedElementParser.ObjectInjectionSpec<>(getParser(savedElementName).getTargetClass(), savedElementName, true));
+        return elementBuilderType.cast(this);
       }
 
       public EB saved(final String injectedFieldName, final String savedElementName) throws NoSuchElementException {
         return saved(injectedFieldName, qn(savedElementName));
       }
 
+      public <@NonNull ST> EB savedArray(final String injectedFieldName, final QName savedElementName, final Class<ST> savedElementTargetClass) throws NoSuchElementException {
+        injectionSpecs.put(injectedFieldName, new InjectedElementParser.ArrayInjectionSpec<>(savedElementTargetClass, savedElementName, true));
+        return elementBuilderType.cast(this);
+      }
+
       public EB savedArray(final String injectedFieldName, final QName savedElementName) throws NoSuchElementException {
-        return addInjectionSpec(injectedFieldName, savedElementName, false, (sourceClass) -> new InjectedElementParser.ArrayInjectionSpec<>(sourceClass, savedElementName, true));
+        injectionSpecs.put(injectedFieldName, new InjectedElementParser.ArrayInjectionSpec<>(getParser(savedElementName).getTargetClass(), savedElementName, true));
+        return elementBuilderType.cast(this);
       }
 
       public EB savedArray(final String injectedFieldName, final String savedElementName) throws NoSuchElementException {
         return savedArray(injectedFieldName, qn(savedElementName));
       }
 
+      public <@NonNull ST> EB savedList(final String injectedFieldName, final QName savedElementName, final Class<ST> savedElementTargetClass) throws NoSuchElementException {
+        injectionSpecs.put(injectedFieldName, new InjectedElementParser.ListInjectionSpec<>(savedElementTargetClass, savedElementName, true));
+        return elementBuilderType.cast(this);
+      }
+
       public EB savedList(final String injectedFieldName, final QName savedElementName) throws NoSuchElementException {
-        return addInjectionSpec(injectedFieldName, savedElementName, false, (sourceClass) -> new InjectedElementParser.ListInjectionSpec<>(sourceClass, savedElementName, true));
+        injectionSpecs.put(injectedFieldName, new InjectedElementParser.ListInjectionSpec<>(getParser(savedElementName).getTargetClass(), savedElementName, true));
+        return elementBuilderType.cast(this);
       }
 
       public EB savedList(final String injectedFieldName, final String savedElementName) throws NoSuchElementException {
         return savedList(injectedFieldName, qn(savedElementName));
       }
 
+      public <@NonNull ST> EB savedSet(final String injectedFieldName, final QName savedElementName, final Class<ST> savedElementTargetClass) throws NoSuchElementException {
+        injectionSpecs.put(injectedFieldName, new InjectedElementParser.SetInjectionSpec<>(savedElementTargetClass, savedElementName, true));
+        return elementBuilderType.cast(this);
+      }
+
       public EB savedSet(final String injectedFieldName, final QName savedElementName) throws NoSuchElementException {
-        return addInjectionSpec(injectedFieldName, savedElementName, false, (sourceClass) -> new InjectedElementParser.SetInjectionSpec<>(sourceClass, savedElementName, true));
+        injectionSpecs.put(injectedFieldName, new InjectedElementParser.SetInjectionSpec<>(getParser(savedElementName).getTargetClass(), savedElementName, true));
+        return elementBuilderType.cast(this);
       }
 
       public EB savedSet(final String injectedFieldName, final String savedElementName) throws NoSuchElementException {
