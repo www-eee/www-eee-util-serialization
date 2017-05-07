@@ -32,12 +32,12 @@ public class SOAPStreamParserTest {
   public ExpectedException thrown = ExpectedException.none();
   public static final SOAPStreamParser<Departure> DEPARTURE_STREAM_PARSER;
   static {
-    final SOAPStreamParser.SchemaBuilder<? extends SOAPStreamParser.SchemaBuilder<?>> schema = SOAPStreamParser.create(URI.create("http://www_eee.net/ns/"));
-    schema.text("departureYear", Year.class, Year::parse, true).headerBuilder().child("departureYear").build().string("departing").text("departureMonthDay", MonthDay.class, MonthDay::parse);
-    schema.injectedBuilder("departure", Departure.class).child("Departing", "departing").child("DepartureMonthDay", "departureMonthDay").saved("DepartureYear", "departureYear").build();
-    // schema.elementBuilder("departure", Departure.class, (ctx) -> new Departure(ctx.child("departing", String.class), ctx.child("departureMonthDay", MonthDay.class).atYear(ctx.savedFirst("departureYear", Year.class).getValue()))).child("departing").child("departureMonthDay").build();
-    schema.containerBuilder("departures").child("departure").child(SOAPStreamParser.FAULT_QNAME).build().body("departures");
-    DEPARTURE_STREAM_PARSER = schema.envelope(true).parser(Departure.class, "departure");
+    final SOAPStreamParser.SchemaBuilder<? extends SOAPStreamParser.SchemaBuilder<?>> schema = SOAPStreamParser.buildSchema(URI.create("http://www_eee.net/ns/"));
+    schema.defineTextElement("departureYear", Year.class, Year::parse, true).defineHeaderElementWithChildBuilder().addReferencedElementAsChild("departureYear").completeElementDefinition().defineStringElement("departing").defineTextElement("departureMonthDay", MonthDay.class, MonthDay::parse);
+    schema.defineElementWithInjectedTargetBuilder("departure", Departure.class).injectChildObject("Departing", "departing").injectChildObject("DepartureMonthDay", "departureMonthDay").injectSavedObject("DepartureYear", "departureYear").completeElementDefinition();
+    // schema.defineElementWithChildBuilder("departure", Departure.class, (ctx) -> new Departure(ctx.getRequiredChildValue("departing", String.class), ctx.getRequiredChildValue("departureMonthDay", MonthDay.class).atYear(ctx.getRequiredSavedValue("departureYear", Year.class).getValue()))).addReferencedElementAsChild("departing").addReferencedElementAsChild("departureMonthDay").completeElementDefinition();
+    schema.defineContainerElementWithChildBuilder("departures").addReferencedElementAsChild("departure").addReferencedElementAsChild(SOAPStreamParser.FAULT_QNAME).completeElementDefinition().defineBodyElement("departures");
+    DEPARTURE_STREAM_PARSER = schema.defineEnvelopeElement(true).createParser(Departure.class, "departure");
   }
 
   /**

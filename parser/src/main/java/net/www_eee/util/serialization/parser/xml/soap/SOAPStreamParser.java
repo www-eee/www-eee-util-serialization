@@ -50,21 +50,21 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
   protected static final ElementParser<SOAPFaultException> FAULT_ELEMENT = new ElementParser<>(SOAPFaultException.class, FAULT_QNAME, (ctx) -> {
     final SOAPFault fault;
     try {
-      fault = SOAP_FACTORY.createFault(cast(ctx).child(REASON_ELEMENT), cast(ctx).child(CODE_ELEMENT));
+      fault = SOAP_FACTORY.createFault(cast(ctx).getRequiredChildValue(REASON_ELEMENT), cast(ctx).getRequiredChildValue(CODE_ELEMENT));
     } catch (SOAPException soape) {
       throw new RuntimeException(soape);
     }
     throw new SOAPFaultException(fault);
   }, false, CODE_ELEMENT, REASON_ELEMENT);
 
-  protected SOAPStreamParser(final Class<T> targetClass, final EnvelopeElementParser envelopeParser, final ElementParser<T> targetParser) {
-    super(targetClass, envelopeParser, targetParser);
+  protected SOAPStreamParser(final Class<T> targetValueClass, final EnvelopeElementParser envelopeParser, final ElementParser<T> targetParser) {
+    super(targetValueClass, envelopeParser, targetParser);
     //TODO return; // https://bugs.openjdk.java.net/browse/JDK-8036775
   }
 
   @SuppressWarnings("unchecked")
-  public static SchemaBuilder<@NonNull ? extends SchemaBuilder<@NonNull ?>> create(final @Nullable URI namespace) {
-    return new SchemaBuilder<>((Class<SchemaBuilder<?>>)(Object)SchemaBuilder.class, namespace, null);
+  public static SchemaBuilder<@NonNull ? extends SchemaBuilder<@NonNull ?>> buildSchema(final @Nullable URI namespace) {
+    return new SchemaBuilder<>((Class<SchemaBuilder<?>>)(Object)SchemaBuilder.class, namespace, null, false);
   }
 
   protected static class HeaderElementParser extends ContainerElementParser {
@@ -101,48 +101,48 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
 
   public static class SchemaBuilder<@NonNull SB extends SchemaBuilder<@NonNull ?>> extends XMLStreamParser.SchemaBuilder<SB> {
 
-    protected SchemaBuilder(final Class<? extends SB> builderType, final @Nullable URI namespace, final @Nullable Set<ElementParser<?>> elementParsers) {
-      super(builderType, namespace, elementParsers);
+    protected SchemaBuilder(final Class<? extends SB> builderType, final @Nullable URI namespace, final @Nullable Set<ElementParser<?>> elementParsers, final boolean unmodifiable) {
+      super(builderType, namespace, elementParsers, unmodifiable);
       this.elementParsers.add(FAULT_ELEMENT);
       return;
     }
 
     @Override
-    protected SB forkImpl(final @Nullable URI namespace) {
-      return schemaBuilderType.cast(new SchemaBuilder<SB>(schemaBuilderType, namespace, elementParsers));
+    protected SB forkImpl(final @Nullable URI namespace, final boolean unmodifiable) {
+      return schemaBuilderType.cast(new SchemaBuilder<SB>(schemaBuilderType, namespace, elementParsers, unmodifiable));
     }
 
-    public final ChildElementListBuilder<SB,?> headerBuilder() {
-      return new ChildElementListBuilder<SB,ElementParser<?>>(schemaBuilderType.cast(this), ElementParser.WILDCARD_CLASS, (childParsers) -> add(new HeaderElementParser(childParsers)));
+    public final ChildElementListBuilder<SB,?> defineHeaderElementWithChildBuilder() {
+      return new ChildElementListBuilder<SB,ElementParser<?>>(schemaBuilderType.cast(this), ElementParser.WILDCARD_CLASS, (childParsers) -> addParser(new HeaderElementParser(childParsers)));
     }
 
-    public final <@NonNull CT> SB body(final QName childElementName, final Class<CT> childElementTargetClass) throws NoSuchElementException {
-      return add(new BodyElementParser(getParser(childElementName, childElementTargetClass)));
+    public final <@NonNull CT> SB defineBodyElement(final QName childElementName, final Class<CT> childElementTargetValueClass) throws NoSuchElementException {
+      return addParser(new BodyElementParser(getParser(childElementName, childElementTargetValueClass)));
     }
 
-    public final SB body(final QName childElementName) throws NoSuchElementException {
-      return add(new BodyElementParser(getParser(childElementName)));
+    public final SB defineBodyElement(final QName childElementName) throws NoSuchElementException {
+      return addParser(new BodyElementParser(getParser(childElementName)));
     }
 
-    public final SB body(final String childElementName) throws NoSuchElementException {
-      return body(qn(childElementName));
+    public final SB defineBodyElement(final String childElementName) throws NoSuchElementException {
+      return defineBodyElement(qn(childElementName));
     }
 
-    public final SB envelope(final boolean hasHeader) throws NoSuchElementException {
-      return add(hasHeader ? new EnvelopeElementParser(getParser(HeaderElementParser.class, HEADER_QNAME), getParser(BodyElementParser.class, BODY_QNAME)) : new EnvelopeElementParser(getParser(BodyElementParser.class, BODY_QNAME)));
+    public final SB defineEnvelopeElement(final boolean hasHeader) throws NoSuchElementException {
+      return addParser(hasHeader ? new EnvelopeElementParser(getParser(HeaderElementParser.class, HEADER_QNAME), getParser(BodyElementParser.class, BODY_QNAME)) : new EnvelopeElementParser(getParser(BodyElementParser.class, BODY_QNAME)));
     }
 
     @Override
-    public <@NonNull T> SOAPStreamParser<T> parser(final Class<T> parserTargetClass, final QName documentElementName, final QName targetElementName) throws NoSuchElementException {
-      return new SOAPStreamParser<T>(parserTargetClass, getParser(EnvelopeElementParser.class, documentElementName), getParser(targetElementName, parserTargetClass));
+    public <@NonNull T> SOAPStreamParser<T> createParser(final Class<T> targetValueClass, final QName documentElementName, final QName targetElementName) throws NoSuchElementException {
+      return new SOAPStreamParser<T>(targetValueClass, getParser(EnvelopeElementParser.class, documentElementName), getParser(targetElementName, targetValueClass));
     }
 
-    public <@NonNull T> SOAPStreamParser<T> parser(final Class<T> parserTargetClass, final QName targetElementName) throws NoSuchElementException {
-      return new SOAPStreamParser<T>(parserTargetClass, getParser(EnvelopeElementParser.class, ENVELOPE_QNAME), getParser(targetElementName, parserTargetClass));
+    public <@NonNull T> SOAPStreamParser<T> createParser(final Class<T> targetValueClass, final QName targetElementName) throws NoSuchElementException {
+      return new SOAPStreamParser<T>(targetValueClass, getParser(EnvelopeElementParser.class, ENVELOPE_QNAME), getParser(targetElementName, targetValueClass));
     }
 
-    public <@NonNull T> SOAPStreamParser<T> parser(final Class<T> parserTargetClass, final String targetElementName) throws NoSuchElementException {
-      return parser(parserTargetClass, qn(targetElementName));
+    public <@NonNull T> SOAPStreamParser<T> createParser(final Class<T> targetValueClass, final String targetElementName) throws NoSuchElementException {
+      return createParser(targetValueClass, qn(targetElementName));
     }
 
   } // SchemaBuilder
