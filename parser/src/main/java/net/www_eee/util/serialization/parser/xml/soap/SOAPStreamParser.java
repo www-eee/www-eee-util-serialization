@@ -23,7 +23,7 @@ import net.www_eee.util.serialization.parser.xml.*;
  * An {@link XMLStreamParser} subclass specialized for parsing {@linkplain SOAPConstants#URI_NS_SOAP_1_2_ENVELOPE SOAP
  * 1.2}.
  *
- * @param <T> The type of target objects to be streamed.
+ * @param <T> The type of target values to be streamed.
  */
 @NonNullByDefault
 public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
@@ -43,7 +43,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
       throw new RuntimeException(se);
     }
   }
-  protected static final TextElementParser<QName> VALUE_ELEMENT = new TextElementParser<>(QName.class, VALUE_QNAME, (s) -> new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, s.substring(s.indexOf(':') + 1), s.substring(0, s.indexOf(':'))), false);
+  protected static final SimpleElementParser<QName> VALUE_ELEMENT = new SimpleElementParser<>(QName.class, VALUE_QNAME, (s) -> new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, s.substring(s.indexOf(':') + 1), s.substring(0, s.indexOf(':'))), false);
   private static final WrapperElementParser<QName> CODE_ELEMENT = new WrapperElementParser<>(CODE_QNAME, VALUE_ELEMENT);
   protected static final StringElementParser TEXT_ELEMENT = new StringElementParser(TEXT_QNAME, false);
   private static final WrapperElementParser<String> REASON_ELEMENT = new WrapperElementParser<>(REASON_QNAME, TEXT_ELEMENT);
@@ -112,7 +112,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
       return schemaBuilderType.cast(new SchemaBuilder<SB>(schemaBuilderType, namespace, elementParsers, unmodifiable));
     }
 
-    public final ChildElementListBuilder<SB,?> defineHeaderElementWithChildBuilder() {
+    public final ChildElementListBuilder<SB,@NonNull ?> defineHeaderElementWithChildBuilder() {
       return new ChildElementListBuilder<SB,ElementParser<?>>(schemaBuilderType.cast(this), ElementParser.WILDCARD_CLASS, (childParsers) -> addParser(new HeaderElementParser(childParsers)));
     }
 

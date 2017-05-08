@@ -27,9 +27,8 @@ import org.jooq.impl.*;
 
 
 /**
- * You {@linkplain #buildSchema(URI) define a schema} for elements you wish to capture from an
- * {@linkplain XMLEventReader XML event stream}, and this class provides a {@link Stream} implementation which will
- * parse the XML and dynamically construct target values as they are retrieved.
+ * This class allows you to {@linkplain #buildSchema(URI) define a schema} which can then be used to
+ * {@linkplain #parse(InputStream) parse} XML, providing you a {@link Stream} of dynamically constructed target values.
  *
  * @param <T> The type of target values to be streamed.
  */
@@ -51,6 +50,13 @@ public class XMLStreamParser<@NonNull T> {
     return targetValueClass;
   }
 
+  /**
+   * Parse the XML provided by the supplied {@link InputStream} into a {@link Stream} of target values.
+   * 
+   * @param inputStream The {@link InputStream} to read XML from.
+   * @return A {@link Stream} of target values, as defined by your {@linkplain #buildSchema(URI) schema}.
+   * @throws ParsingException If a problem was encountered while parsing.
+   */
   public final Stream<T> parse(final InputStream inputStream) throws ParsingException {
     try {
       final XMLEventReader reader = XML_INPUT_FACTORY.createXMLEventReader(inputStream);
@@ -62,7 +68,7 @@ public class XMLStreamParser<@NonNull T> {
         targetParentContext = tpe.getParsingContextImpl();
       }
 
-      return (targetParentContext != null) ? StreamSupport.stream(new TargetSpliterator(targetParentContext, reader), false) : Stream.empty();
+      return (targetParentContext != null) ? StreamSupport.stream(new TargetValueSpliterator(targetParentContext, reader), false) : Stream.empty();
     } catch (XMLStreamException xse) {
       throw new XMLStreamParsingException(xse);
     }
@@ -100,6 +106,13 @@ public class XMLStreamParser<@NonNull T> {
     return;
   }
 
+  /**
+   * Create a {@link SchemaBuilder SchemaBuilder} which can then be used to define the elements used within the XML
+   * documents you wish to {@link SchemaBuilder#createParser(Class, QName, QName) create a parser} for.
+   * 
+   * @param namespace The (optional) namespace used by your XML.
+   * @return A new {@link SchemaBuilder}.
+   */
   @SuppressWarnings("unchecked")
   public static SchemaBuilder<@NonNull ? extends SchemaBuilder<@NonNull ?>> buildSchema(final @Nullable URI namespace) {
     return new SchemaBuilder<>((Class<SchemaBuilder<?>>)(Object)SchemaBuilder.class, namespace, null, false);
@@ -111,8 +124,22 @@ public class XMLStreamParser<@NonNull T> {
   }
 
   /**
-   * An implementation of this interface is the sole parameter to a {@link Function} you supply for translating element
-   * content into target objects.
+   * <p>
+   * An interface providing information about the {@linkplain #getStartElement() element} currently being parsed,
+   * including it's {@linkplain #getElementName() name}, {@linkplain #getTargetValueClass() type},
+   * {@linkplain #getElementContext() context}, {@linkplain #getAttrs() attributes}, and {@linkplain #getChildValues()
+   * children}, etc. Generally, when the parser needs to calculate the {@linkplain #getTargetValueClass() target value}
+   * for a newly parsed element, an implementation of this interface will be provided to a target value calculation
+   * {@link Function}, which is generally supplied when an element is
+   * {@linkplain SchemaBuilder#defineElement(String, Class, Function) defined}.
+   * </p>
+   * 
+   * <p>
+   * In addition to information about the element currently being parsed, this interface also provides access to a
+   * global store of {@linkplain #getSavedValues(QName, Class) saved element values}.
+   * </p>
+   * 
+   * @param <T> The {@linkplain #getTargetValueClass() target value class} of the element being parsed.
    */
   public interface ElementParsingContext<@NonNull T> {
 
@@ -125,6 +152,8 @@ public class XMLStreamParser<@NonNull T> {
     }
 
     public StartElement getStartElement();
+
+    public Deque<StartElement> getElementContext();
 
     @SuppressWarnings("unchecked")
     public default Map<String,String> getAttrs() {
@@ -182,8 +211,16 @@ public class XMLStreamParser<@NonNull T> {
       return targetValueFunction.apply(getRequiredAttr(attrLocalName));
     }
 
-    public Deque<StartElement> getElementContext();
-
+    /**
+     * This method provides access to the target values of any previously parsed elements within the current document
+     * which were defined as having their target value saved.
+     * 
+     * @param <S> The target value type of the desired saved values. 
+     * @param savedElementName The name of the element for which saved values are desired. If <code>null</code>,
+     * <em>all</em> saved values of the specified <code>targetValueClass</code> will be returned.
+     * @param targetValueClass The target value class of the desired saved values.
+     * @return A Stream of values.
+     */
     public <@NonNull S> Stream<S> getSavedValues(final @Nullable QName savedElementName, final Class<S> targetValueClass);
 
     public default <@NonNull S> Stream<S> getSavedValues(final @Nullable String savedElementLocalName, final Class<S> targetValueClass) {
@@ -254,12 +291,12 @@ public class XMLStreamParser<@NonNull T> {
 
   } // ElementParsingContext
 
-  private final class TargetSpliterator implements Spliterator<T> {
+  private final class TargetValueSpliterator implements Spliterator<T> {
     private final int CHARACTERISTICS = 0 | Spliterator.ORDERED | Spliterator.DISTINCT | Spliterator.NONNULL | Spliterator.IMMUTABLE;
     private final ElementParser<?>.ParsingContextImpl parentContext;
     private final XMLEventReader reader;
 
-    public TargetSpliterator(final ElementParser<?>.ParsingContextImpl parentContext, final XMLEventReader reader) throws IllegalArgumentException {
+    public TargetValueSpliterator(final ElementParser<?>.ParsingContextImpl parentContext, final XMLEventReader reader) throws IllegalArgumentException {
       if (!((ElementParser<?>)parentContext.getParser()).getChildParsers().stream().anyMatch(targetParser::equals)) throw new IllegalStateException("Current parser not parent of target parser");
       this.parentContext = parentContext;
       this.reader = reader;
@@ -315,8 +352,13 @@ public class XMLStreamParser<@NonNull T> {
       }
     }
 
-  } // TargetSpliterator
+  } // TargetValueSpliterator
 
+  /**
+   * The base class for an {@link Exception} indicating some problem was encountered during
+   * {@linkplain XMLStreamParser#parse(InputStream) parsing}. Instances will normally either be an
+   * {@link XMLStreamParsingException} or {@link ElementValueParsingException}.
+   */
   public abstract static class ParsingException extends RuntimeException {
 
     protected ParsingException() {
@@ -336,6 +378,10 @@ public class XMLStreamParser<@NonNull T> {
 
   } // ParsingException
 
+  /**
+   * A {@link ParsingException} which indicates an {@link XMLStreamException} was encountered during
+   * {@linkplain XMLStreamParser#parse(InputStream) parsing}.
+   */
   public static class XMLStreamParsingException extends ParsingException {
 
     protected XMLStreamParsingException(final XMLStreamException xse) {
@@ -377,6 +423,11 @@ public class XMLStreamParser<@NonNull T> {
 
   } // ContextualParsingException
 
+  /**
+   * A {@link ParsingException} which indicates a problem occurred while mapping the
+   * {@linkplain XMLStreamParser#parse(InputStream) parsed} XML into a {@linkplain XMLStreamParser#getTargetValueClass()
+   * target value}.
+   */
   public static class ElementValueParsingException extends ContextualParsingException {
 
     protected ElementValueParsingException(final Exception cause, final ElementParser<?>.ParsingContextImpl context) {
@@ -394,8 +445,8 @@ public class XMLStreamParser<@NonNull T> {
   /**
    * This exception is thrown to abort
    * {@linkplain XMLStreamParser.ContentParser#parse(XMLStreamParser.ElementParser.ParsingContextImpl, XMLEvent, XMLEventReader, ElementParser)
-   * parsing} and return the current {@linkplain #getParsingContextImpl() parsing context} when the specified
-   * {@linkplain XMLStreamParser.ElementParser element} encountered.
+   * parsing} and return the current {@linkplain #getParsingContextImpl() parsing context} when a specified
+   * {@linkplain XMLStreamParser.ElementParser element} is encountered.
    */
   private static class TerminatingParserException extends ContextualParsingException {
 
@@ -477,7 +528,7 @@ public class XMLStreamParser<@NonNull T> {
 
   protected static class ElementParser<@NonNull T> extends ContentParser<StartElement,T> {
     @SuppressWarnings("unchecked")
-    public static final Class<ElementParser<?>> WILDCARD_CLASS = (Class<ElementParser<?>>)(Object)ElementParser.class;
+    public static final Class<ElementParser<@NonNull ?>> WILDCARD_CLASS = (Class<ElementParser<@NonNull ?>>)(Object)ElementParser.class;
     protected final QName elementName;
     private final Function<ElementParsingContext<T>,T> targetValueFunction;
     protected final boolean saveTargetValue;
@@ -692,17 +743,22 @@ public class XMLStreamParser<@NonNull T> {
 
   } // WrapperElementParser
 
-  protected static class TextElementParser<@NonNull T> extends ElementParser<T> {
+  protected static class SimpleElementParser<@NonNull T> extends ElementParser<T> {
     private static final CharactersParser CHARACTERS_PARSER = new CharactersParser(true, true, false);
 
-    public TextElementParser(final Class<T> targetValueClass, final QName elementName, final Function<? super String,? extends T> targetValueFunction, final boolean saveTargetValue) {
-      super(targetValueClass, elementName, (ctx) -> targetValueFunction.apply(cast(ctx).getChildValues(CHARACTERS_PARSER).collect(Collectors.joining())), saveTargetValue, CHARACTERS_PARSER);
+    public SimpleElementParser(final Class<T> targetValueClass, final QName elementName, final BiFunction<ElementParsingContext<T>,? super String,? extends T> targetValueFunction, final boolean saveTargetValue) {
+      super(targetValueClass, elementName, (ctx) -> targetValueFunction.apply(ctx, cast(ctx).getChildValues(CHARACTERS_PARSER).collect(Collectors.joining())), saveTargetValue, CHARACTERS_PARSER);
       return;
     }
 
-  } // TextElementParser
+    public SimpleElementParser(final Class<T> targetValueClass, final QName elementName, final Function<? super String,? extends T> targetValueFunction, final boolean saveTargetValue) {
+      this(targetValueClass, elementName, (ctx, value) -> targetValueFunction.apply(value), saveTargetValue);
+      return;
+    }
 
-  protected static class StringElementParser extends TextElementParser<String> {
+  } // SimpleElementParser
+
+  protected static class StringElementParser extends SimpleElementParser<String> {
 
     public StringElementParser(final QName elementName, final boolean saveTargetValue) {
       super(String.class, elementName, Function.identity(), saveTargetValue);
@@ -838,6 +894,37 @@ public class XMLStreamParser<@NonNull T> {
 
   } // InjectedTargetElementParser
 
+  /**
+   * <p>
+   * This class allows you to define the elements used within your XML documents and then
+   * {@linkplain #createParser(Class, QName, QName) create a parser} for them.
+   * </p>
+   * 
+   * <p>
+   * XML uses a tree structure, and you use this class to define the schema for your XML from the bottom up, starting
+   * with the "leaf" nodes, and then {@linkplain ChildElementListBuilder#addReferencedElementAsChild(QName, Class)
+   * referencing} those when defining the parent elements which utilize those leaves as their own children, and so on
+   * and so forth, working your way up to the root document element. All element definitions map their content to some
+   * type of {@linkplain XMLStreamParser#getTargetValueClass() target value}. This builder class allows you to define
+   * several types of elements within your schema. The first are low-level leaf-type
+   * {@linkplain #defineSimpleElement(String, Class, BiFunction, boolean) simple} elements, and the generic
+   * {@linkplain #defineStringElement(String, boolean) string} version. Next, the most common, are
+   * {@linkplain #defineElement(String, Class, Function) typed elements}, for binding to your own data model. And then,
+   * finally, are {@linkplain #defineWrapperElement(String, QName, Class) wrapper} and
+   * {@linkplain #defineContainerElementWithChildBuilder(String) container} elements, for housing the others and forming
+   * the root of the document tree. Any elements encountered while parsing which have not been defined within your
+   * schema will be silently ignored.
+   * </p>
+   *
+   * <p>
+   * All definition methods accept a {@linkplain QName#getLocalPart() local name}, where the element will be defined
+   * using the {@linkplain #getNamespace() current namespace} of the builder, which, unless you have
+   * {@linkplain #setNamespace(URI) changed} it, will be the URI specified when you
+   * {@linkplain XMLStreamParser#buildSchema(URI) created} it.
+   * </p>
+   *
+   * @param <SB> The concrete class of schema builder being used.
+   */
   public static class SchemaBuilder<@NonNull SB extends SchemaBuilder<@NonNull ?>> {
     protected final Class<? extends SB> schemaBuilderType;
     protected final @Nullable URI namespace;
@@ -846,7 +933,7 @@ public class XMLStreamParser<@NonNull T> {
     protected SchemaBuilder(final Class<? extends SB> schemaBuilderType, final @Nullable URI namespace, final @Nullable Set<ElementParser<?>> elementParsers, final boolean unmodifiable) {
       this.schemaBuilderType = Objects.requireNonNull(schemaBuilderType);
       this.namespace = namespace;
-      final Set<ElementParser<?>> copy = (elementParsers != null) ? new HashSet<>(elementParsers) : new HashSet<>();
+      final Set<ElementParser<?>> copy = (elementParsers != null) ? new CopyOnWriteArraySet<>(elementParsers) : new CopyOnWriteArraySet<>();
       this.elementParsers = (unmodifiable) ? Collections.unmodifiableSet(copy) : copy;
       return;
     }
@@ -855,11 +942,50 @@ public class XMLStreamParser<@NonNull T> {
       return schemaBuilderType.cast(new SchemaBuilder<SB>(schemaBuilderType, namespace, elementParsers, unmodifiable));
     }
 
-    public final SB fork(final boolean unmodifiable) {
-      return forkImpl(namespace, unmodifiable);
+    /**
+     * Create a copy of this schema and all the element definitions it currently contains.
+     * 
+     * @return A new builder instance, populated with all the elements from this schema. You will be able to modify the
+     * returned schema, even if this one is {@linkplain #unmodifiable() unmodifiable}.
+     */
+    public final SB fork() {
+      return forkImpl(namespace, false);
     }
 
-    public final SB changeNamespace(final @Nullable URI namespace) {
+    /**
+     * Create an {@linkplain Collections#unmodifiableSet(Set) unmodifiable} {@linkplain #fork() fork} of this schema.
+     * 
+     * @return A copy of this builder which can't be modified. If you subsequently wish to make changes to the
+     * unmodifiable schema, you can {@linkplain #fork() fork} it again.
+     * @see #fork()
+     */
+    public final SB unmodifiable() {
+      return forkImpl(namespace, true);
+    }
+
+    /**
+     * Get the {@linkplain QName#getNamespaceURI() namespace} this builder is using to define elements. Note that this
+     * property is <em>immutable</em>.
+     * 
+     * @return The current {@linkplain QName#getNamespaceURI() namespace}.
+     * @see #setNamespace(URI)
+     */
+    public final Optional<URI> getNamespace() {
+      return Optional.ofNullable(namespace);
+    }
+
+    /**
+     * Continue building on this schema, but using the supplied {@linkplain QName#getNamespaceURI() namespace}.
+     * 
+     * @param namespace The {@linkplain QName#getNamespaceURI() namespace} you wish subsequent definitions on the
+     * returned builder to use.
+     * @return If the supplied namespace is the same as the {@linkplain #getNamespace() current} one, this builder will
+     * be returned, otherwise a {@linkplain #fork() forked} copy using the supplied namespace will be returned.
+     * @see #getNamespace()
+     * @see #fork()
+     */
+    public final SB setNamespace(final @Nullable URI namespace) {
+      if (Objects.equals(this.namespace, namespace)) return schemaBuilderType.cast(this);
       return forkImpl(namespace, false);
     }
 
@@ -888,14 +1014,14 @@ public class XMLStreamParser<@NonNull T> {
       return getParser((Class<ElementParser<ET>>)(Object)ElementParser.class, forElementName, forElementTargetValueClass);
     }
 
-    protected final <PT extends ElementParser<?>> PT getParser(final Class<PT> ofParserType, final QName forElementName) throws NoSuchElementException {
+    protected final <PT extends ElementParser<@NonNull ?>> PT getParser(final Class<PT> ofParserType, final QName forElementName) throws NoSuchElementException {
       final List<ElementParser<?>> parsers = elementParsers.stream().filter((parser) -> ofParserType.isAssignableFrom(parser.getClass())).filter((parser) -> forElementName.equals(parser.getElementName())).collect(Collectors.toList());
       if (parsers.isEmpty()) throw new NoSuchElementException("No '" + forElementName.getLocalPart() + "' element found");
       if (parsers.size() > 1) throw new NoSuchElementException("Multiple '" + forElementName.getLocalPart() + "' elements found");
       return ofParserType.cast(parsers.get(0));
     }
 
-    protected final ElementParser<?> getParser(final QName forElementName) throws NoSuchElementException {
+    protected final ElementParser<@NonNull ?> getParser(final QName forElementName) throws NoSuchElementException {
       return getParser(ElementParser.WILDCARD_CLASS, forElementName);
     }
 
@@ -915,24 +1041,28 @@ public class XMLStreamParser<@NonNull T> {
       return importElementDefinition(fromSchemaBuilder, qn(elementLocalName));
     }
 
-    public final <@NonNull ET> SB defineElement(final String elementLocalName, final Class<ET> targetValueClass, final Function<ElementParsingContext<ET>,ET> targetValueFunction) {
-      return addParser(new ElementParser<ET>(targetValueClass, qn(elementLocalName), targetValueFunction, false));
+    /**
+     * Define a simple element of the form '<code>&lt;ElementName&gt;Value&lt;/ElementName&gt;</code>', with no child
+     * elements (leaf node).
+     * 
+     * @param <ET> The type of target value which will be calculated from the defined element.
+     * @param simpleElementLocalName The {@linkplain QName#getLocalPart() local name} of the element being defined (the
+     * {@linkplain #getNamespace() current namespace} will be used).
+     * @param targetValueClass The {@link Class} of target value which will be calculated when the defined element is
+     * parsed.
+     * @param targetFunction A BiFunction to be used to calculate the target value for the defined element from the
+     * {@link ElementParsingContext} and a String containing the child {@linkplain Characters character} data.
+     * @param saveTargetValue Should target values calculated for the defined element be saved and made available (via
+     * the {@link ElementParsingContext}) to the target value calculation functions of all subsequent elements parsed
+     * within the current document?
+     * @return The builder this method was called on.
+     */
+    public final <@NonNull ET> SB defineSimpleElement(final String simpleElementLocalName, final Class<ET> targetValueClass, final BiFunction<ElementParsingContext<ET>,String,ET> targetFunction, final boolean saveTargetValue) {
+      return addParser(new SimpleElementParser<ET>(targetValueClass, qn(simpleElementLocalName), targetFunction, saveTargetValue));
     }
 
-    public final <@NonNull ET> ChildElementListBuilder<SB,?> defineElementWithChildBuilder(final String elementLocalName, final Class<ET> targetValueClass, final Function<ElementParsingContext<ET>,ET> targetFunction) {
-      return new ChildElementListBuilder<SB,ElementParser<?>>(schemaBuilderType.cast(this), ElementParser.WILDCARD_CLASS, (childParsers) -> addParser(new ElementParser<ET>(targetValueClass, qn(elementLocalName), targetFunction, false, childParsers)));
-    }
-
-    public final ChildElementListBuilder<SB,?> defineContainerElementWithChildBuilder(final String containerElementLocalName) {
-      return new ChildElementListBuilder<SB,ElementParser<?>>(schemaBuilderType.cast(this), ElementParser.WILDCARD_CLASS, (childParsers) -> addParser(new ContainerElementParser(qn(containerElementLocalName), childParsers)));
-    }
-
-    public final <@NonNull ET> SB defineTextElement(final String textElementLocalName, final Class<ET> targetValueClass, final Function<String,ET> targetFunction, final boolean saveTargetValue) {
-      return addParser(new TextElementParser<ET>(targetValueClass, qn(textElementLocalName), targetFunction, saveTargetValue));
-    }
-
-    public final <@NonNull ET> SB defineTextElement(final String textElementLocalName, final Class<ET> targetValueClass, final Function<String,ET> targetFunction) {
-      return defineTextElement(textElementLocalName, targetValueClass, targetFunction, false);
+    public final <@NonNull ET> SB defineSimpleElement(final String simpleElementLocalName, final Class<ET> targetValueClass, final Function<String,ET> targetFunction) {
+      return addParser(new SimpleElementParser<ET>(targetValueClass, qn(simpleElementLocalName), targetFunction, false));
     }
 
     public final SB defineStringElement(final String stringElementLocalName, final boolean saveTargetValue) {
@@ -941,6 +1071,14 @@ public class XMLStreamParser<@NonNull T> {
 
     public final SB defineStringElement(final String stringElementLocalName) {
       return defineStringElement(stringElementLocalName, false);
+    }
+
+    public final <@NonNull ET> SB defineElement(final String elementLocalName, final Class<ET> targetValueClass, final Function<ElementParsingContext<ET>,ET> targetValueFunction) {
+      return addParser(new ElementParser<ET>(targetValueClass, qn(elementLocalName), targetValueFunction, false));
+    }
+
+    public final <@NonNull ET> ChildElementListBuilder<SB,@NonNull ?> defineElementWithChildBuilder(final String elementLocalName, final Class<ET> targetValueClass, final Function<ElementParsingContext<ET>,ET> targetFunction) {
+      return new ChildElementListBuilder<SB,ElementParser<?>>(schemaBuilderType.cast(this), ElementParser.WILDCARD_CLASS, (childParsers) -> addParser(new ElementParser<ET>(targetValueClass, qn(elementLocalName), targetFunction, false, childParsers)));
     }
 
     public final <@NonNull ET> SB defineElementWithInjectedTarget(final String injectedElementLocalName, final Class<ET> targetValueClass) {
@@ -958,6 +1096,22 @@ public class XMLStreamParser<@NonNull T> {
 
     public final <@NonNull ET> InjectedTargetElementBuilder<ET,@NonNull ? extends InjectedTargetElementBuilder<ET,@NonNull ?>> defineElementWithInjectedTargetBuilder(final Class<ET> targetValueClass) {
       return defineElementWithInjectedTargetBuilder(targetValueClass.getSimpleName(), targetValueClass);
+    }
+
+    public final <@NonNull ET> SB defineWrapperElement(final String elementLocalName, final QName wrappedElementName, final Class<ET> wrappedElementTargetValueClass) throws NoSuchElementException {
+      return addParser(new WrapperElementParser<ET>(qn(elementLocalName), getParser(wrappedElementName, wrappedElementTargetValueClass)));
+    }
+
+    public final SB defineWrapperElement(final String elementLocalName, final QName wrappedElementName) throws NoSuchElementException {
+      return addParser(new WrapperElementParser<>(qn(elementLocalName), getParser(wrappedElementName)));
+    }
+
+    public final SB defineWrapperElement(final String elementLocalName, final String wrappedElementName) throws NoSuchElementException {
+      return defineWrapperElement(elementLocalName, qn(wrappedElementName));
+    }
+
+    public final ChildElementListBuilder<SB,@NonNull ?> defineContainerElementWithChildBuilder(final String containerElementLocalName) {
+      return new ChildElementListBuilder<SB,ElementParser<?>>(schemaBuilderType.cast(this), ElementParser.WILDCARD_CLASS, (childParsers) -> addParser(new ContainerElementParser(qn(containerElementLocalName), childParsers)));
     }
 
     public <@NonNull T> XMLStreamParser<T> createParser(final Class<T> targetValueClass, final QName documentElementName, final QName targetElementName) throws NoSuchElementException {
