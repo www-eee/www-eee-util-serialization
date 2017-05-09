@@ -28,7 +28,8 @@ import org.jooq.impl.*;
 
 /**
  * This class allows you to {@linkplain #buildSchema(URI) define a schema} which can then be used to
- * {@linkplain #parse(InputStream) parse} XML, providing you a {@link Stream} of dynamically constructed target values.
+ * {@linkplain #parse(InputStream) parse} XML, providing you with a {@link Stream} of dynamically constructed target
+ * values.
  *
  * @param <T> The type of target values to be streamed.
  */
@@ -215,7 +216,7 @@ public class XMLStreamParser<@NonNull T> {
      * This method provides access to the target values of any previously parsed elements within the current document
      * which were defined as having their target value saved.
      * 
-     * @param <S> The target value type of the desired saved values. 
+     * @param <S> The target value type of the desired saved values.
      * @param savedElementName The name of the element for which saved values are desired. If <code>null</code>,
      * <em>all</em> saved values of the specified <code>targetValueClass</code> will be returned.
      * @param targetValueClass The target value class of the desired saved values.
@@ -379,7 +380,7 @@ public class XMLStreamParser<@NonNull T> {
   } // ParsingException
 
   /**
-   * A {@link ParsingException} which indicates an {@link XMLStreamException} was encountered during
+   * A {@link ParsingException ParsingException} which indicates an {@link XMLStreamException} was encountered during
    * {@linkplain XMLStreamParser#parse(InputStream) parsing}.
    */
   public static class XMLStreamParsingException extends ParsingException {
@@ -424,7 +425,7 @@ public class XMLStreamParser<@NonNull T> {
   } // ContextualParsingException
 
   /**
-   * A {@link ParsingException} which indicates a problem occurred while mapping the
+   * A {@link ParsingException ParsingException} which indicates a problem occurred while mapping the
    * {@linkplain XMLStreamParser#parse(InputStream) parsed} XML into a {@linkplain XMLStreamParser#getTargetValueClass()
    * target value}.
    */
@@ -727,8 +728,8 @@ public class XMLStreamParser<@NonNull T> {
 
   protected static class ContainerElementParser extends ElementParser<StartElement> {
 
-    public ContainerElementParser(final QName elementName, final @NonNull ElementParser<?> @Nullable... childParsers) {
-      super(StartElement.class, elementName, (context) -> context.getStartElement(), false, childParsers);
+    public ContainerElementParser(final QName elementName, final @NonNull ElementParser<?> @Nullable... childElementParsers) {
+      super(StartElement.class, elementName, (context) -> context.getStartElement(), false, childElementParsers);
       return;
     }
 
@@ -736,8 +737,8 @@ public class XMLStreamParser<@NonNull T> {
 
   protected static class WrapperElementParser<@NonNull T> extends ElementParser<T> {
 
-    public WrapperElementParser(final QName elementName, final ElementParser<T> wrappedElement) {
-      super(wrappedElement.targetValueClass, elementName, (ctx) -> cast(ctx).getRequiredChildValue(wrappedElement), false, wrappedElement);
+    public WrapperElementParser(final QName elementName, final ElementParser<T> wrappedElementParser) {
+      super(wrappedElementParser.targetValueClass, elementName, (ctx) -> cast(ctx).getRequiredChildValue(wrappedElementParser), false, wrappedElementParser);
       return;
     }
 
@@ -770,8 +771,8 @@ public class XMLStreamParser<@NonNull T> {
   protected static class InjectedTargetElementParser<@NonNull T> extends ElementParser<T> {
     protected static final DSLContext DSL_CONTEXT = DSL.using(SQLDialect.DEFAULT);
 
-    public InjectedTargetElementParser(final Class<T> targetValueClass, final QName elementName, final boolean saveTargetValue, final @Nullable Collection<? extends ElementParser<?>> childParsers, final @Nullable Map<String,? extends InjectionSpec<T,?>> injectionSpecs) throws IllegalArgumentException {
-      super(targetValueClass, elementName, (ctx) -> inject(targetValueClass, ctx, injectionSpecs), saveTargetValue, childParsers);
+    public InjectedTargetElementParser(final Class<T> targetValueClass, final QName elementName, final boolean saveTargetValue, final @Nullable Collection<? extends ElementParser<?>> childElementParsers, final @Nullable Map<String,? extends InjectionSpec<T,?>> injectionSpecs) throws IllegalArgumentException {
+      super(targetValueClass, elementName, (ctx) -> inject(targetValueClass, ctx, injectionSpecs), saveTargetValue, childElementParsers);
       return;
     }
 
@@ -827,8 +828,8 @@ public class XMLStreamParser<@NonNull T> {
     protected static class AttrInjectionSpec<@NonNull ET> extends SingleValuedInjectionSpec<ET,String> {
       protected final Function<? super String,?> targetValueFunction;
 
-      protected AttrInjectionSpec(final QName sourceName, final @Nullable Function<? super String,?> targetValueFunction) {
-        super(String.class, sourceName, false);
+      protected AttrInjectionSpec(final QName attrName, final @Nullable Function<? super String,?> targetValueFunction) {
+        super(String.class, attrName, false);
         this.targetValueFunction = (targetValueFunction != null) ? targetValueFunction : Function.identity();
         return;
       }
@@ -912,8 +913,11 @@ public class XMLStreamParser<@NonNull T> {
    * {@linkplain #defineElement(String, Class, Function) typed elements}, for binding to your own data model. And then,
    * finally, are {@linkplain #defineWrapperElement(String, QName, Class) wrapper} and
    * {@linkplain #defineContainerElementWithChildBuilder(String) container} elements, for housing the others and forming
-   * the root of the document tree. Any elements encountered while parsing which have not been defined within your
-   * schema will be silently ignored.
+   * the root of the document tree.
+   * </p>
+   * 
+   * <p>
+   * Any elements encountered while parsing which have not been defined within your schema will be silently ignored.
    * </p>
    *
    * <p>
@@ -922,7 +926,14 @@ public class XMLStreamParser<@NonNull T> {
    * {@linkplain #setNamespace(URI) changed} it, will be the URI specified when you
    * {@linkplain XMLStreamParser#buildSchema(URI) created} it.
    * </p>
-   *
+   * 
+   * <p>
+   * Note that this API doesn't provide any way to define elements having mixed content, containing both
+   * {@linkplain #defineSimpleElement(String, Class, BiFunction, boolean) child character data} and
+   * {@link #defineElementWithChildBuilder(String, Class, Function) child elements}. If your schema requires parsing
+   * those, you will need to write your own XMLStreamParser subclass and define those elements using the internal API.
+   * </p>
+   * 
    * @param <SB> The concrete class of schema builder being used.
    */
   public static class SchemaBuilder<@NonNull SB extends SchemaBuilder<@NonNull ?>> {
@@ -1042,72 +1053,354 @@ public class XMLStreamParser<@NonNull T> {
     }
 
     /**
-     * Define a simple element of the form '<code>&lt;ElementName&gt;Value&lt;/ElementName&gt;</code>', with no child
-     * elements (leaf node).
+     * <p>
+     * Define a "simple" element, of the form '<code>&lt;ElementName&gt;Value&lt;/ElementName&gt;</code>', containing
+     * only {@linkplain Characters character data}, and no child elements. A simple element can be defined to calculate
+     * whatever target value type you choose (via the supplied <code>targetValueFunction</code>) when parsed.
+     * </p>
      * 
-     * @param <ET> The type of target value which will be calculated from the defined element.
+     * <p>
+     * If you <em>don't</em> want to use the parsed character data {@link String} to calculate some other target value
+     * type, you should define your element using the {@linkplain #defineStringElement(String, boolean) string method}.
+     * You should also be using a different method to define your element if it
+     * {@linkplain #defineElement(String, Class, Function) contains no child data}, or
+     * {@linkplain #defineElementWithChildBuilder(String, Class, Function) contains child elements}.
+     * </p>
+     * 
+     * @param <ET> The type of target value which will be constructed when the defined element is parsed.
      * @param simpleElementLocalName The {@linkplain QName#getLocalPart() local name} of the element being defined (the
      * {@linkplain #getNamespace() current namespace} will be used).
-     * @param targetValueClass The {@link Class} of target value which will be calculated when the defined element is
-     * parsed.
-     * @param targetFunction A BiFunction to be used to calculate the target value for the defined element from the
-     * {@link ElementParsingContext} and a String containing the child {@linkplain Characters character} data.
-     * @param saveTargetValue Should target values calculated for the defined element be saved and made available (via
-     * the {@link ElementParsingContext}) to the target value calculation functions of all subsequent elements parsed
-     * within the current document?
-     * @return The builder this method was called on.
+     * @param targetValueClass The {@link Class} object for the type of target value which will be constructed when the
+     * defined element is parsed.
+     * @param targetValueFunction A {@link BiFunction} to be used to calculate the target value for the defined element
+     * whenever it's encountered by the parser. This function accepts the current {@link ElementParsingContext} and a
+     * {@link String} containing the child {@linkplain Characters character data}, and must return the calculated target
+     * value for the parsed element.
+     * @param saveTargetValue Should target values calculated for the defined element be saved by the parser and then
+     * made available (via the {@link ElementParsingContext}) to the target value calculation functions of all
+     * subsequent elements parsed within the current document?
+     * @return The {@link SchemaBuilder} this method was invoked on.
+     * @see #defineSimpleElement(String, Class, Function)
      */
-    public final <@NonNull ET> SB defineSimpleElement(final String simpleElementLocalName, final Class<ET> targetValueClass, final BiFunction<ElementParsingContext<ET>,String,ET> targetFunction, final boolean saveTargetValue) {
-      return addParser(new SimpleElementParser<ET>(targetValueClass, qn(simpleElementLocalName), targetFunction, saveTargetValue));
+    public final <@NonNull ET> SB defineSimpleElement(final String simpleElementLocalName, final Class<ET> targetValueClass, final BiFunction<ElementParsingContext<ET>,String,ET> targetValueFunction, final boolean saveTargetValue) {
+      return addParser(new SimpleElementParser<ET>(targetValueClass, qn(simpleElementLocalName), targetValueFunction, saveTargetValue));
     }
 
-    public final <@NonNull ET> SB defineSimpleElement(final String simpleElementLocalName, final Class<ET> targetValueClass, final Function<String,ET> targetFunction) {
-      return addParser(new SimpleElementParser<ET>(targetValueClass, qn(simpleElementLocalName), targetFunction, false));
+    /**
+     * <p>
+     * Define a "simple" element, of the form '<code>&lt;ElementName&gt;Value&lt;/ElementName&gt;</code>', containing
+     * only {@linkplain Characters character data}, and no child elements. A simple element can be defined to calculate
+     * whatever target value type you choose (via the supplied <code>targetValueFunction</code>) when parsed.
+     * </p>
+     * 
+     * <p>
+     * If you <em>don't</em> want to use the parsed character data {@link String} to calculate some other target value
+     * type, you should define your element using the {@linkplain #defineStringElement(String, boolean) string method}.
+     * You should also be using a different method to define your element if it
+     * {@linkplain #defineElement(String, Class, Function) contains no child data}, or
+     * {@linkplain #defineElementWithChildBuilder(String, Class, Function) contains child elements}.
+     * </p>
+     * 
+     * @param <ET> The type of target value which will be constructed when the defined element is parsed.
+     * @param simpleElementLocalName The {@linkplain QName#getLocalPart() local name} of the element being defined (the
+     * {@linkplain #getNamespace() current namespace} will be used).
+     * @param targetValueClass The {@link Class} object for the type of target value which will be constructed when the
+     * defined element is parsed.
+     * @param targetValueFunction A {@link Function} to be used to calculate the target value for the defined element
+     * whenever it's encountered by the parser. This function accepts a {@link String} containing the child
+     * {@linkplain Characters character data}, and must return the calculated target value for the parsed element.
+     * @return The {@link SchemaBuilder} this method was invoked on.
+     * @see #defineSimpleElement(String, Class, BiFunction, boolean)
+     */
+    public final <@NonNull ET> SB defineSimpleElement(final String simpleElementLocalName, final Class<ET> targetValueClass, final Function<String,ET> targetValueFunction) {
+      return addParser(new SimpleElementParser<ET>(targetValueClass, qn(simpleElementLocalName), targetValueFunction, false));
     }
 
+    /**
+     * <p>
+     * Define a "string" element, of the form '<code>&lt;ElementName&gt;Value&lt;/ElementName&gt;</code>', containing
+     * only {@linkplain Characters character} data, and no child elements.
+     * </p>
+     * 
+     * <p>
+     * This is a specialization of the {@linkplain #defineSimpleElement(String, Class, BiFunction, boolean) simple
+     * element}, where instead of supplying a function to calculate a target value from the parsed character data, the
+     * target value <em>is</em> simply the parsed character data {@link String}, with no conversion.
+     * </p>
+     * 
+     * @param stringElementLocalName The {@linkplain QName#getLocalPart() local name} of the element being defined (the
+     * {@linkplain #getNamespace() current namespace} will be used).
+     * @param saveTargetValue Should target values calculated for the defined element be saved by the parser and then
+     * made available (via the {@link ElementParsingContext}) to the target value calculation functions of all
+     * subsequent elements parsed within the current document?
+     * @return The {@link SchemaBuilder} this method was invoked on.
+     * @see #defineStringElement(String)
+     */
     public final SB defineStringElement(final String stringElementLocalName, final boolean saveTargetValue) {
       return addParser(new StringElementParser(qn(stringElementLocalName), saveTargetValue));
     }
 
+    /**
+     * <p>
+     * Define a "string" element, of the form '<code>&lt;ElementName&gt;Value&lt;/ElementName&gt;</code>', containing
+     * only {@linkplain Characters character} data, and no child elements.
+     * </p>
+     * 
+     * <p>
+     * This is a specialization of the {@linkplain #defineSimpleElement(String, Class, BiFunction, boolean) simple
+     * element}, where instead of supplying a function to calculate a target value from the parsed character data, the
+     * target value <em>is</em> simply the parsed character data {@link String}, with no conversion.
+     * </p>
+     * 
+     * @param stringElementLocalName The {@linkplain QName#getLocalPart() local name} of the element being defined (the
+     * {@linkplain #getNamespace() current namespace} will be used).
+     * @return The {@link SchemaBuilder} this method was invoked on.
+     * @see #defineStringElement(String, boolean)
+     */
     public final SB defineStringElement(final String stringElementLocalName) {
       return defineStringElement(stringElementLocalName, false);
     }
 
+    /**
+     * <p>
+     * Define a regular content element, which calculates a target value using the supplied
+     * <code>targetValueFunction</code> when parsed.
+     * </p>
+     * 
+     * <p>
+     * This method is for defining elements without any child data, if your element contains any child data, you should
+     * be defining it using a different method, such as the method to
+     * {@linkplain #defineElementWithChildBuilder(String, Class, Function) build an element definition containing child
+     * elements}, or the method to {@linkplain #defineSimpleElement(String, Class, BiFunction, boolean) define a simple
+     * element containing only character data}. Also, you should be using a different method to
+     * {@linkplain #defineElementWithInjectedTargetBuilder(String, Class) define an element producing a target value
+     * which can be constructed using injection}.
+     * </p>
+     * 
+     * @param <ET> The type of target value which will be constructed when the defined element is parsed.
+     * @param elementLocalName The {@linkplain QName#getLocalPart() local name} of the element being defined (the
+     * {@linkplain #getNamespace() current namespace} will be used).
+     * @param targetValueClass The {@link Class} object for the type of target value which will be constructed when the
+     * defined element is parsed.
+     * @param targetValueFunction A {@link Function} to be used to calculate the target value for the defined element
+     * whenever it's encountered by the parser. This function accepts the current {@link ElementParsingContext} and must
+     * return the calculated target value for the parsed element.
+     * @return The {@link SchemaBuilder} this method was invoked on.
+     * @see #defineElementWithChildBuilder(String, Class, Function)
+     * @see #defineElementWithInjectedTargetBuilder(String, Class)
+     * @see #defineSimpleElement(String, Class, BiFunction, boolean)
+     */
     public final <@NonNull ET> SB defineElement(final String elementLocalName, final Class<ET> targetValueClass, final Function<ElementParsingContext<ET>,ET> targetValueFunction) {
       return addParser(new ElementParser<ET>(targetValueClass, qn(elementLocalName), targetValueFunction, false));
     }
 
-    public final <@NonNull ET> ChildElementListBuilder<SB,@NonNull ?> defineElementWithChildBuilder(final String elementLocalName, final Class<ET> targetValueClass, final Function<ElementParsingContext<ET>,ET> targetFunction) {
-      return new ChildElementListBuilder<SB,ElementParser<?>>(schemaBuilderType.cast(this), ElementParser.WILDCARD_CLASS, (childParsers) -> addParser(new ElementParser<ET>(targetValueClass, qn(elementLocalName), targetFunction, false, childParsers)));
+    /**
+     * <p>
+     * Define a regular content element, which calculates a target value using the supplied
+     * <code>targetValueFunction</code> when parsed.
+     * </p>
+     * 
+     * <p>
+     * This method is for defining elements which have child elements, if your element contains no child elements, you
+     * should be defining it using a different method, such as the method to
+     * {@linkplain #defineElement(String, Class, Function) define an element with no child data}, or the method to
+     * {@linkplain #defineSimpleElement(String, Class, BiFunction, boolean) define a simple element containing only
+     * character data}. Also, you should be using a different method to
+     * {@linkplain #defineElementWithInjectedTargetBuilder(String, Class) define an element producing a target value
+     * which can be constructed using injection}.
+     * </p>
+     * 
+     * @param <ET> The type of target value which will be constructed when the defined element is parsed.
+     * @param elementLocalName The {@linkplain QName#getLocalPart() local name} of the element being defined (the
+     * {@linkplain #getNamespace() current namespace} will be used).
+     * @param targetValueClass The {@link Class} object for the type of target value which will be constructed when the
+     * defined element is parsed.
+     * @param targetValueFunction A {@link Function} to be used to calculate the target value for the defined element
+     * whenever it's encountered by the parser. This function accepts the current {@link ElementParsingContext} and must
+     * return the calculated target value for the parsed element.
+     * @return A {@link ChildElementListBuilder} which you can use to define which elements this definition will have as
+     * children by referencing other existing element definitions.
+     * @see #defineElement(String, Class, Function)
+     * @see #defineElementWithInjectedTargetBuilder(String, Class)
+     * @see #defineSimpleElement(String, Class, BiFunction, boolean)
+     */
+    public final <@NonNull ET> ChildElementListBuilder<SB,@NonNull ?> defineElementWithChildBuilder(final String elementLocalName, final Class<ET> targetValueClass, final Function<ElementParsingContext<ET>,ET> targetValueFunction) {
+      return new ChildElementListBuilder<SB,ElementParser<?>>(schemaBuilderType.cast(this), ElementParser.WILDCARD_CLASS, (childParsers) -> addParser(new ElementParser<ET>(targetValueClass, qn(elementLocalName), targetValueFunction, false, childParsers)));
     }
 
+    /**
+     * <p>
+     * Define a content element which automatically constructs it's target value by creating a {@link Record} from the
+     * parsed data and then {@linkplain Record#into(Class) injecting} it into the specified
+     * <code>targetValueClass</code>.
+     * </p>
+     * 
+     * <p>
+     * This method is for defining injected elements without any children, if your element contains children, you should
+     * be defining it using the method to {@linkplain #defineElementWithInjectedTargetBuilder(String, Class) build an
+     * injected element definition containing child elements}. If you want to construct the target value yourself,
+     * without using injection, you should be using the method to {@linkplain #defineElement(String, Class, Function)
+     * define an element with no child data}.
+     * </p>
+     * 
+     * @param <ET> The type of target value which will be constructed when the defined element is parsed.
+     * @param injectedElementLocalName The {@linkplain QName#getLocalPart() local name} of the element being defined
+     * (the {@linkplain #getNamespace() current namespace} will be used).
+     * @param targetValueClass The {@link Class} object for the type of target value which will be constructed when the
+     * defined element is parsed.
+     * @return The {@link SchemaBuilder} this method was invoked on.
+     * @see DefaultRecordMapper
+     * @see #defineElementWithInjectedTarget(Class)
+     * @see #defineElementWithInjectedTargetBuilder(String, Class)
+     * @see #defineElement(String, Class, Function)
+     */
     public final <@NonNull ET> SB defineElementWithInjectedTarget(final String injectedElementLocalName, final Class<ET> targetValueClass) {
       return addParser(new InjectedTargetElementParser<ET>(targetValueClass, qn(injectedElementLocalName), false, null, null));
     }
 
+    /**
+     * <p>
+     * Define a content element which automatically constructs it's target value by creating a {@link Record} from the
+     * parsed data and then {@linkplain Record#into(Class) injecting} it into the specified
+     * <code>targetValueClass</code>.
+     * </p>
+     * 
+     * <p>
+     * This method is for defining injected elements without any children, if your element contains children, you should
+     * be defining it using the method to {@linkplain #defineElementWithInjectedTargetBuilder(String, Class) build an
+     * injected element definition containing child elements}. If you want to construct the target value yourself,
+     * without using injection, you should be using the method to {@linkplain #defineElement(String, Class, Function)
+     * define an element with no child data}.
+     * </p>
+     * 
+     * @param <ET> The type of target value which will be constructed when the defined element is parsed.
+     * @param targetValueClass The {@link Class} object for the type of target value which will be constructed when the
+     * defined element is parsed. The {@linkplain Class#getSimpleName() simple name} from this class will also be used
+     * as the {@linkplain QName#getLocalPart() local name} of the element being defined (the {@linkplain #getNamespace()
+     * current namespace} will be used).
+     * @return The {@link SchemaBuilder} this method was invoked on.
+     * @see DefaultRecordMapper
+     * @see #defineElementWithInjectedTarget(String, Class)
+     * @see #defineElementWithInjectedTargetBuilder(String, Class)
+     * @see #defineElement(String, Class, Function)
+     */
     public final <@NonNull ET> SB defineElementWithInjectedTarget(final Class<ET> targetValueClass) {
       return defineElementWithInjectedTarget(targetValueClass.getSimpleName(), targetValueClass);
     }
 
+    /**
+     * <p>
+     * Define a content element which automatically constructs it's target value by creating a {@link Record} from the
+     * parsed data and then {@linkplain Record#into(Class) injecting} it into the specified
+     * <code>targetValueClass</code>.
+     * </p>
+     * 
+     * <p>
+     * This method is for defining injected elements which have children or require attribute type mapping before
+     * injection. If this is not the case for the element being defined, you should be using the other method to
+     * {@linkplain #defineElementWithInjectedTarget(String, Class) define an injected element without children}. If you
+     * want to construct the target value yourself, without using injection, you should be using the method to
+     * {@linkplain #defineElementWithChildBuilder(String, Class, Function) build an element definition containing child
+     * elements}.
+     * </p>
+     * 
+     * @param <ET> The type of target value which will be constructed when the defined element is parsed.
+     * @param injectedElementLocalName The {@linkplain QName#getLocalPart() local name} of the element being defined
+     * (the {@linkplain #getNamespace() current namespace} will be used).
+     * @param targetValueClass The {@link Class} object for the type of target value which will be constructed when the
+     * defined element is parsed.
+     * @return The {@link InjectedTargetElementBuilder} which you can use to reference other existing element
+     * definitions this one will have as children and specify how those should be injected into the
+     * <code>targetValueClass</code>.
+     * @see DefaultRecordMapper
+     * @see #defineElementWithInjectedTargetBuilder(Class)
+     * @see #defineElementWithInjectedTarget(String, Class)
+     * @see #defineElementWithChildBuilder(String, Class, Function)
+     */
     @SuppressWarnings("unchecked")
     public final <@NonNull ET> InjectedTargetElementBuilder<ET,@NonNull ? extends InjectedTargetElementBuilder<ET,@NonNull ?>> defineElementWithInjectedTargetBuilder(final String injectedElementLocalName, final Class<ET> targetValueClass) {
       return new InjectedTargetElementBuilder<>((Class<InjectedTargetElementBuilder<ET,?>>)(Object)InjectedTargetElementBuilder.class, qn(injectedElementLocalName), targetValueClass);
     }
 
+    /**
+     * <p>
+     * Define a content element which automatically constructs it's target value by creating a {@link Record} from the
+     * parsed data and then {@linkplain Record#into(Class) injecting} it into the specified
+     * <code>targetValueClass</code>.
+     * </p>
+     * 
+     * <p>
+     * This method is for defining injected elements which have children or require attribute type mapping before
+     * injection. If this is not the case for the element being defined, you should be using the other method to
+     * {@linkplain #defineElementWithInjectedTarget(String, Class) define an injected element without children}. If you
+     * want to construct the target value yourself, without using injection, you should be using the method to
+     * {@linkplain #defineElementWithChildBuilder(String, Class, Function) build an element definition containing child
+     * elements}.
+     * </p>
+     * 
+     * @param <ET> The type of target value which will be constructed when the defined element is parsed.
+     * @param targetValueClass The {@link Class} object for the type of target value which will be constructed when the
+     * defined element is parsed. The {@linkplain Class#getSimpleName() simple name} from this class will also be used
+     * as the {@linkplain QName#getLocalPart() local name} of the element being defined (the {@linkplain #getNamespace()
+     * current namespace} will be used).
+     * @return The {@link InjectedTargetElementBuilder} which you can use to reference other existing element
+     * definitions this one will have as children and specify how those should be injected into the
+     * <code>targetValueClass</code>.
+     * @see DefaultRecordMapper
+     * @see #defineElementWithInjectedTargetBuilder(String, Class)
+     * @see #defineElementWithInjectedTarget(String, Class)
+     * @see #defineElementWithChildBuilder(String, Class, Function)
+     */
     public final <@NonNull ET> InjectedTargetElementBuilder<ET,@NonNull ? extends InjectedTargetElementBuilder<ET,@NonNull ?>> defineElementWithInjectedTargetBuilder(final Class<ET> targetValueClass) {
       return defineElementWithInjectedTargetBuilder(targetValueClass.getSimpleName(), targetValueClass);
     }
 
-    public final <@NonNull ET> SB defineWrapperElement(final String elementLocalName, final QName wrappedElementName, final Class<ET> wrappedElementTargetValueClass) throws NoSuchElementException {
-      return addParser(new WrapperElementParser<ET>(qn(elementLocalName), getParser(wrappedElementName, wrappedElementTargetValueClass)));
+    /**
+     * <p>
+     * Define a "wrapper" element, which contains a single child element, and uses that child's target value as it's
+     * own.
+     * </p>
+     * 
+     * @param <ET> The type of target value which will be constructed when the defined element is parsed.
+     * @param wrapperElementLocalName The {@linkplain QName#getLocalPart() local name} of the element being defined (the
+     * {@linkplain #getNamespace() current namespace} will be used).
+     * @param wrappedElementName The name of an existing element which will be the child element wrapped by this one.
+     * @param targetValueClass The {@link Class} object for the type of target value which will be constructed when the
+     * defined element is parsed.
+     * @return The {@link SchemaBuilder} this method was invoked on.
+     */
+    public final <@NonNull ET> SB defineWrapperElement(final String wrapperElementLocalName, final QName wrappedElementName, final Class<ET> targetValueClass) throws NoSuchElementException {
+      return addParser(new WrapperElementParser<ET>(qn(wrapperElementLocalName), getParser(wrappedElementName, targetValueClass)));
     }
 
-    public final SB defineWrapperElement(final String elementLocalName, final QName wrappedElementName) throws NoSuchElementException {
-      return addParser(new WrapperElementParser<>(qn(elementLocalName), getParser(wrappedElementName)));
+    /**
+     * <p>
+     * Define a "wrapper" element, which contains a single child element, and uses that child's target value as it's
+     * own.
+     * </p>
+     * 
+     * @param wrapperElementLocalName The {@linkplain QName#getLocalPart() local name} of the element being defined (the
+     * {@linkplain #getNamespace() current namespace} will be used).
+     * @param wrappedElementName The name of an existing element which will be the child element wrapped by this one.
+     * @return The {@link SchemaBuilder} this method was invoked on.
+     */
+    public final SB defineWrapperElement(final String wrapperElementLocalName, final QName wrappedElementName) throws NoSuchElementException {
+      return addParser(new WrapperElementParser<>(qn(wrapperElementLocalName), getParser(wrappedElementName)));
     }
 
-    public final SB defineWrapperElement(final String elementLocalName, final String wrappedElementName) throws NoSuchElementException {
-      return defineWrapperElement(elementLocalName, qn(wrappedElementName));
+    /**
+     * <p>
+     * Define a "wrapper" element, which contains a single child element, and uses that child's target value as it's
+     * own.
+     * </p>
+     * 
+     * @param wrapperElementLocalName The {@linkplain QName#getLocalPart() local name} of the element being defined (the
+     * {@linkplain #getNamespace() current namespace} will be used).
+     * @param wrappedElementName The name of an existing element which will be the child element wrapped by this one.
+     * @return The {@link SchemaBuilder} this method was invoked on.
+     */
+    public final SB defineWrapperElement(final String wrapperElementLocalName, final String wrappedElementName) throws NoSuchElementException {
+      return defineWrapperElement(wrapperElementLocalName, qn(wrappedElementName));
     }
 
     public final ChildElementListBuilder<SB,@NonNull ?> defineContainerElementWithChildBuilder(final String containerElementLocalName) {

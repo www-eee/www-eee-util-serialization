@@ -20,8 +20,8 @@ import net.www_eee.util.serialization.parser.xml.*;
 
 
 /**
- * An {@link XMLStreamParser} subclass specialized for parsing {@linkplain SOAPConstants#URI_NS_SOAP_1_2_ENVELOPE SOAP
- * 1.2}.
+ * An {@link XMLStreamParser} with additional support for {@linkplain #buildSchema(URI) defining}
+ * {@linkplain SOAPConstants#URI_NS_SOAP_1_2_ENVELOPE SOAP} elements.
  *
  * @param <T> The type of target values to be streamed.
  */
@@ -62,6 +62,13 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
     //TODO return; // https://bugs.openjdk.java.net/browse/JDK-8036775
   }
 
+  /**
+   * Create a SOAP {@link SchemaBuilder SchemaBuilder} which can then be used to define the elements used within the XML
+   * documents you wish to {@link SchemaBuilder#createParser(Class, QName) create a parser} for.
+   * 
+   * @param namespace The (optional) namespace used by your XML.
+   * @return A new {@link SchemaBuilder}.
+   */
   @SuppressWarnings("unchecked")
   public static SchemaBuilder<@NonNull ? extends SchemaBuilder<@NonNull ?>> buildSchema(final @Nullable URI namespace) {
     return new SchemaBuilder<>((Class<SchemaBuilder<?>>)(Object)SchemaBuilder.class, namespace, null, false);
@@ -78,8 +85,8 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
 
   protected static class BodyElementParser extends ContainerElementParser {
 
-    public BodyElementParser(final ElementParser<?> childParser) {
-      super(BODY_QNAME, FAULT_ELEMENT, childParser);
+    public BodyElementParser(final ElementParser<?> childElementParser) {
+      super(BODY_QNAME, FAULT_ELEMENT, childElementParser);
       return;
     }
 
@@ -99,6 +106,13 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
 
   } // EnvelopeElementParser
 
+  /**
+   * An extended {@link XMLStreamParser.SchemaBuilder SchemaBuilder}, adding support for the definition of SOAP
+   * {@link #defineHeaderElementWithChildBuilder() Header}, {@link #defineBodyElement(QName, Class) Body}, and
+   * {@link #defineEnvelopeElement(boolean) Envelope} elements.
+   * 
+   * @see XMLStreamParser.SchemaBuilder
+   */
   public static class SchemaBuilder<@NonNull SB extends SchemaBuilder<@NonNull ?>> extends XMLStreamParser.SchemaBuilder<SB> {
 
     protected SchemaBuilder(final Class<? extends SB> builderType, final @Nullable URI namespace, final @Nullable Set<ElementParser<?>> elementParsers, final boolean unmodifiable) {
