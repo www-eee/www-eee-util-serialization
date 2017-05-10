@@ -42,6 +42,8 @@ public class SOAPStreamParserTest {
 
   /**
    * Test parsing the data while ignoring extra elements.
+   * 
+   * @throws Exception If there was a problem executing this test.
    */
   @Test
   public void testIgnoreExtra() throws Exception {
@@ -54,6 +56,8 @@ public class SOAPStreamParserTest {
 
   /**
    * Test global (top-level) fault handling.
+   * 
+   * @throws Exception If there was a problem executing this test.
    */
   @Test
   public void testGlobalFaultThrown() throws Exception {
@@ -71,6 +75,8 @@ public class SOAPStreamParserTest {
 
   /**
    * Test local fault handling.
+   * 
+   * @throws Exception If there was a problem executing this test.
    */
   @Test
   public void testLocalFaultThrown() throws Exception {
@@ -91,6 +97,8 @@ public class SOAPStreamParserTest {
 
   /**
    * Test local fault recovery (can you continue iterating afterwards).
+   * 
+   * @throws Exception If there was a problem executing this test.
    */
   @Test
   public void testLocalFaultRecovery() throws Exception {

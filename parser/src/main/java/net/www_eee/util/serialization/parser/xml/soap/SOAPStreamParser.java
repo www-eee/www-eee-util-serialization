@@ -107,11 +107,12 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
   } // EnvelopeElementParser
 
   /**
-   * An extended {@link XMLStreamParser.SchemaBuilder SchemaBuilder}, adding support for the definition of SOAP
-   * {@link #defineHeaderElementWithChildBuilder() Header}, {@link #defineBodyElement(QName, Class) Body}, and
-   * {@link #defineEnvelopeElement(boolean) Envelope} elements.
+   * An extended {@link net.www_eee.util.serialization.parser.xml.XMLStreamParser.SchemaBuilder SchemaBuilder}, adding
+   * support for the definition of SOAP {@link #defineHeaderElementWithChildBuilder() Header},
+   * {@link #defineBodyElement(QName, Class) Body}, and {@link #defineEnvelopeElement(boolean) Envelope} elements.
    * 
-   * @see XMLStreamParser.SchemaBuilder
+   * @param <SB> The concrete class of schema builder being used.
+   * @see net.www_eee.util.serialization.parser.xml.XMLStreamParser.SchemaBuilder
    */
   public static class SchemaBuilder<@NonNull SB extends SchemaBuilder<@NonNull ?>> extends XMLStreamParser.SchemaBuilder<SB> {
 
@@ -126,8 +127,8 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
       return schemaBuilderType.cast(new SchemaBuilder<SB>(schemaBuilderType, namespace, elementParsers, unmodifiable));
     }
 
-    public final ChildElementListBuilder<SB,@NonNull ?> defineHeaderElementWithChildBuilder() {
-      return new ChildElementListBuilder<SB,ElementParser<?>>(schemaBuilderType.cast(this), ElementParser.WILDCARD_CLASS, (childParsers) -> addParser(new HeaderElementParser(childParsers)));
+    public final ChildElementListBuilder<@NonNull ?> defineHeaderElementWithChildBuilder() {
+      return new ChildElementListBuilder<ElementParser<?>>(ElementParser.WILDCARD_CLASS, (childParsers) -> addParser(new HeaderElementParser(childParsers)));
     }
 
     public final <@NonNull CT> SB defineBodyElement(final QName childElementName, final Class<CT> childElementTargetValueClass) throws NoSuchElementException {
