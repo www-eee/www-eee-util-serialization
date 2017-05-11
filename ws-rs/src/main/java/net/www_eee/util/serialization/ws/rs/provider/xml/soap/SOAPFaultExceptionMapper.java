@@ -21,6 +21,10 @@ import javax.ws.rs.core.*;
 import javax.ws.rs.ext.*;
 
 
+/**
+ * An {@link ExceptionMapper} implementation which will return
+ * {@linkplain XMLSerializable#createSOAPFaultWrapper(Throwable, boolean) SOAP Fault XML} for exceptions.
+ */
 @NonNullByDefault
 public class SOAPFaultExceptionMapper implements ExceptionMapper<Throwable> {
   /**

@@ -27,13 +27,37 @@ import net.www_eee.util.serialization.parser.xml.*;
  */
 @NonNullByDefault
 public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
+  /**
+   * A {@link QName} constant for the {@link SOAPConstants#URI_NS_SOAP_1_2_ENVELOPE SOAP} <code>Envelope</code> element.
+   */
   public static final QName ENVELOPE_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Envelope");
+  /**
+   * A {@link QName} constant for the {@link SOAPConstants#URI_NS_SOAP_1_2_ENVELOPE SOAP} <code>Header</code> element.
+   */
   public static final QName HEADER_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Header");
+  /**
+   * A {@link QName} constant for the {@link SOAPConstants#URI_NS_SOAP_1_2_ENVELOPE SOAP} <code>Body</code> element.
+   */
   public static final QName BODY_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Body");
+  /**
+   * A {@link QName} constant for the {@link SOAPConstants#URI_NS_SOAP_1_2_ENVELOPE SOAP} <code>Value</code> element.
+   */
   public static final QName VALUE_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Value");
+  /**
+   * A {@link QName} constant for the {@link SOAPConstants#URI_NS_SOAP_1_2_ENVELOPE SOAP} <code>Code</code> element.
+   */
   public static final QName CODE_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Code");
+  /**
+   * A {@link QName} constant for the {@link SOAPConstants#URI_NS_SOAP_1_2_ENVELOPE SOAP} <code>Text</code> element.
+   */
   public static final QName TEXT_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Text");
+  /**
+   * A {@link QName} constant for the {@link SOAPConstants#URI_NS_SOAP_1_2_ENVELOPE SOAP} <code>Reason</code> element.
+   */
   public static final QName REASON_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Reason");
+  /**
+   * A {@link QName} constant for the {@link SOAPConstants#URI_NS_SOAP_1_2_ENVELOPE SOAP} <code>Fault</code> element.
+   */
   public static final QName FAULT_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Fault");
   protected static final SOAPFactory SOAP_FACTORY;
   static {
@@ -107,9 +131,10 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
   } // EnvelopeElementParser
 
   /**
-   * An extended {@link net.www_eee.util.serialization.parser.xml.XMLStreamParser.SchemaBuilder SchemaBuilder}, adding
-   * support for the definition of SOAP {@link #defineHeaderElementWithChildBuilder() Header},
-   * {@link #defineBodyElement(QName, Class) Body}, and {@link #defineEnvelopeElement(boolean) Envelope} elements.
+   * An extension of the regular {@link net.www_eee.util.serialization.parser.xml.XMLStreamParser.SchemaBuilder
+   * SchemaBuilder} class, adding in additional support for the definition of SOAP
+   * {@link #defineHeaderElementWithChildBuilder() Header}, {@link #defineBodyElement(QName, Class) Body}, and
+   * {@link #defineEnvelopeElement(boolean) Envelope} elements.
    * 
    * @param <SB> The concrete class of schema builder being used.
    * @see net.www_eee.util.serialization.parser.xml.XMLStreamParser.SchemaBuilder
@@ -127,22 +152,67 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
       return schemaBuilderType.cast(new SchemaBuilder<SB>(schemaBuilderType, namespace, elementParsers, unmodifiable));
     }
 
+    /**
+     * Define a <code>Header</code> element (a specialized {@linkplain #defineContainerElementWithChildBuilder(String)
+     * container}).
+     * 
+     * @return A {@link net.www_eee.util.serialization.parser.xml.XMLStreamParser.SchemaBuilder.ChildElementListBuilder
+     * ChildElementListBuilder} which you can use to define which elements the <code>Header</code> will have as
+     * children.
+     */
     public final ChildElementListBuilder<@NonNull ?> defineHeaderElementWithChildBuilder() {
       return new ChildElementListBuilder<ElementParser<?>>(ElementParser.WILDCARD_CLASS, (childParsers) -> addParser(new HeaderElementParser(childParsers)));
     }
 
+    /**
+     * Define a <code>Body</code> element (a specialized {@linkplain #defineContainerElementWithChildBuilder(String)
+     * container}).
+     * 
+     * @param <CT> The type of target value which will be constructed when the child element is parsed.
+     * @param childElementName The name of an existing element you wish to add as a child of this one.
+     * @param childElementTargetValueClass The target value type produced by the element you wish to add as a child of
+     * this one.
+     * @return The {@link SOAPStreamParser.SchemaBuilder SchemaBuilder} this method was invoked on.
+     * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+     */
     public final <@NonNull CT> SB defineBodyElement(final QName childElementName, final Class<CT> childElementTargetValueClass) throws NoSuchElementException {
       return addParser(new BodyElementParser(getParser(childElementName, childElementTargetValueClass)));
     }
 
+    /**
+     * Define a <code>Body</code> element (a specialized {@linkplain #defineContainerElementWithChildBuilder(String)
+     * container}).
+     * 
+     * @param childElementName The name of an existing element you wish to add as a child of this one.
+     * @return The {@link SOAPStreamParser.SchemaBuilder SchemaBuilder} this method was invoked on.
+     * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+     */
     public final SB defineBodyElement(final QName childElementName) throws NoSuchElementException {
       return addParser(new BodyElementParser(getParser(childElementName)));
     }
 
-    public final SB defineBodyElement(final String childElementName) throws NoSuchElementException {
-      return defineBodyElement(qn(childElementName));
+    /**
+     * Define a <code>Body</code> element (a specialized {@linkplain #defineContainerElementWithChildBuilder(String)
+     * container}).
+     * 
+     * @param childElementLocalName The {@linkplain QName#getLocalPart() local name} of an existing element you wish to
+     * add as a child of this one (the {@linkplain #getNamespace() current namespace} will be used).
+     * @return The {@link SOAPStreamParser.SchemaBuilder SchemaBuilder} this method was invoked on.
+     * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+     */
+    public final SB defineBodyElement(final String childElementLocalName) throws NoSuchElementException {
+      return defineBodyElement(qn(childElementLocalName));
     }
 
+    /**
+     * Define an <code>Envelope</code> element (a specialized
+     * {@linkplain #defineContainerElementWithChildBuilder(String) container}).
+     * 
+     * @param hasHeader Should the <code>Envelope</code> element being defined reference an existing <code>Header</code>
+     * element as it's child?
+     * @return The {@link SOAPStreamParser.SchemaBuilder SchemaBuilder} this method was invoked on.
+     * @throws NoSuchElementException If the referenced <code>Header</code> element hasn't been defined in this schema.
+     */
     public final SB defineEnvelopeElement(final boolean hasHeader) throws NoSuchElementException {
       return addParser(hasHeader ? new EnvelopeElementParser(getParser(HeaderElementParser.class, HEADER_QNAME), getParser(BodyElementParser.class, BODY_QNAME)) : new EnvelopeElementParser(getParser(BodyElementParser.class, BODY_QNAME)));
     }
@@ -152,12 +222,37 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
       return new SOAPStreamParser<T>(targetValueClass, getParser(EnvelopeElementParser.class, documentElementName), getParser(targetElementName, targetValueClass));
     }
 
+    /**
+     * Create a {@link SOAPStreamParser} using element definitions from this schema.
+     * 
+     * @param <T> The type of target values to be streamed by the created parser.
+     * @param targetValueClass The {@link Class} object for the type of
+     * {@linkplain XMLStreamParser#getTargetValueClass() target value} which will be streamed by the created parser.
+     * @param targetElementName The name of the primary content element whose target values will be streamed by the
+     * created parser.
+     * @return The newly created {@link SOAPStreamParser} instance.
+     * @throws NoSuchElementException If a referenced element hasn't been defined in this schema.
+     * @see #createParser(Class, String)
+     */
     public <@NonNull T> SOAPStreamParser<T> createParser(final Class<T> targetValueClass, final QName targetElementName) throws NoSuchElementException {
       return new SOAPStreamParser<T>(targetValueClass, getParser(EnvelopeElementParser.class, ENVELOPE_QNAME), getParser(targetElementName, targetValueClass));
     }
 
-    public <@NonNull T> SOAPStreamParser<T> createParser(final Class<T> targetValueClass, final String targetElementName) throws NoSuchElementException {
-      return createParser(targetValueClass, qn(targetElementName));
+    /**
+     * Create a {@link SOAPStreamParser} using element definitions from this schema.
+     * 
+     * @param <T> The type of target values to be streamed by the created parser.
+     * @param targetValueClass The {@link Class} object for the type of
+     * {@linkplain XMLStreamParser#getTargetValueClass() target value} which will be streamed by the created parser.
+     * @param targetElementLocalName The {@linkplain QName#getLocalPart() local name} of the primary content element
+     * whose target values will be streamed by the created parser (the {@linkplain #getNamespace() current namespace}
+     * will be used).
+     * @return The newly created {@link SOAPStreamParser} instance.
+     * @throws NoSuchElementException If a referenced element hasn't been defined in this schema.
+     * @see #createParser(Class, String)
+     */
+    public <@NonNull T> SOAPStreamParser<T> createParser(final Class<T> targetValueClass, final String targetElementLocalName) throws NoSuchElementException {
+      return createParser(targetValueClass, qn(targetElementLocalName));
     }
 
   } // SchemaBuilder

@@ -18,6 +18,9 @@ import javax.xml.stream.*;
 import org.eclipse.jdt.annotation.*;
 
 
+/**
+ * An interface allowing you {@linkplain #writeXML(XMLStreamWriter, URI) stream XML} representing this object.
+ */
 @NonNullByDefault
 public interface XMLSerializable {
 
@@ -45,6 +48,14 @@ public interface XMLSerializable {
     return stringWriter.getBuffer().toString();
   }
 
+  /**
+   * Write out XML for the supplied object wrapped in an additional (parent) element.
+   * 
+   * @param wrappedObject The object you wish to output wrapped in an additional (parent) element.
+   * @param namespace The namespace for the wrapper element to be generated.
+   * @param localName The local name of the wrapper element to be generated.
+   * @return A new {@link XMLSerializable} instance for the wrapped object.
+   */
   public static XMLSerializable createElementWrapper(final XMLSerializable wrappedObject, final URI namespace, final String localName) {
     class ElementWrapper implements XMLSerializable, Serializable {
 
@@ -62,6 +73,13 @@ public interface XMLSerializable {
     return new ElementWrapper();
   }
 
+  /**
+   * Create an {@link XMLSerializable} instance capable of writing out SOAP Fault XML for the given exception.
+   * 
+   * @param exception The exception you want to write XML for.
+   * @param isSenderError Is the provided exception the result of a sender (client) or receiver (server) error?
+   * @return An {@link XMLSerializable} instance for generating SOAP Fault XML for the given exception.
+   */
   public static XMLSerializable createSOAPFaultWrapper(final Throwable exception, final boolean isSenderError) {
     class SOAPFaultWrapper implements XMLSerializable, Serializable {
       private final URI soapNamespace = URI.create(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE);

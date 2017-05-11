@@ -28,15 +28,18 @@ import static org.junit.Assert.*;
  */
 @NonNullByDefault
 public class SOAPStreamParserTest {
+  /**
+   * The {@link ExpectedException} for the {@link Test}'s.
+   */
   @Rule
   public ExpectedException thrown = ExpectedException.none();
-  public static final SOAPStreamParser<Departure> DEPARTURE_STREAM_PARSER;
+  protected static final SOAPStreamParser<Departure> DEPARTURE_STREAM_PARSER;
   static {
     final SOAPStreamParser.SchemaBuilder<? extends SOAPStreamParser.SchemaBuilder<?>> schema = SOAPStreamParser.buildSchema(URI.create("http://www_eee.net/ns/"));
-    schema.defineSimpleElement("departureYear", Year.class, (ctx, value) -> Year.parse(value), true).defineHeaderElementWithChildBuilder().addReferencedElementAsChild("departureYear").completeElementDefinition().defineStringElement("departing").defineSimpleElement("departureMonthDay", MonthDay.class, MonthDay::parse);
-    schema.defineElementWithInjectedTargetBuilder("departure", Departure.class).injectChildObject("Departing", "departing").injectChildObject("DepartureMonthDay", "departureMonthDay").injectSavedObject("DepartureYear", "departureYear").completeElementDefinition();
-    // schema.defineElementWithChildBuilder("departure", Departure.class, (ctx) -> new Departure(ctx.getRequiredChildValue("departing", String.class), ctx.getRequiredChildValue("departureMonthDay", MonthDay.class).atYear(ctx.getRequiredSavedValue("departureYear", Year.class).getValue()))).addReferencedElementAsChild("departing").addReferencedElementAsChild("departureMonthDay").completeElementDefinition();
-    schema.defineContainerElementWithChildBuilder("departures").addReferencedElementAsChild("departure").addReferencedElementAsChild(SOAPStreamParser.FAULT_QNAME).completeElementDefinition().defineBodyElement("departures");
+    schema.defineSimpleElement("departureYear", Year.class, (ctx, value) -> Year.parse(value), true).defineHeaderElementWithChildBuilder().addChild("departureYear").completeDefinition().defineStringElement("departing").defineSimpleElement("departureMonthDay", MonthDay.class, MonthDay::parse);
+    schema.defineElementWithInjectedTargetBuilder("departure", Departure.class).injectChildObject("Departing", "departing").injectChildObject("DepartureMonthDay", "departureMonthDay").injectSavedObject("DepartureYear", "departureYear").completeDefinition();
+    // schema.defineElementWithChildBuilder("departure", Departure.class, (ctx) -> new Departure(ctx.getRequiredChildValue("departing", String.class), ctx.getRequiredChildValue("departureMonthDay", MonthDay.class).atYear(ctx.getRequiredSavedValue("departureYear", Year.class).getValue())), false).addChild("departing").addChild("departureMonthDay").completeDefinition();
+    schema.defineContainerElementWithChildBuilder("departures").addChild("departure").addChild(SOAPStreamParser.FAULT_QNAME).completeDefinition().defineBodyElement("departures");
     DEPARTURE_STREAM_PARSER = schema.defineEnvelopeElement(true).createParser(Departure.class, "departure");
   }
 
@@ -115,16 +118,32 @@ public class SOAPStreamParserTest {
     return;
   }
 
+  /**
+   * An example data model class representing a departure.
+   */
   public static class Departure {
     private final String departing;
     private final LocalDate date;
 
+    /**
+     * Construct a new <code>Departure</code>.
+     * 
+     * @param departing The location of the departure.
+     * @param date The departure date.
+     */
     public Departure(final String departing, final LocalDate date) {
       this.departing = departing;
       this.date = date;
       return;
     }
 
+    /**
+     * Construct a new <code>Departure</code>.
+     * 
+     * @param departing The location of the departure.
+     * @param departureMonthDay The month and day of the departure date.
+     * @param departureYear The year of the departure date.
+     */
     @ConstructorProperties({ "Departing", "DepartureMonthDay", "DepartureYear" })
     public Departure(final String departing, final MonthDay departureMonthDay, final @Nullable Year departureYear) {
       this(departing, departureMonthDay.atYear((departureYear != null) ? departureYear.getValue() : LocalDateTime.now().getYear()));

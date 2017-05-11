@@ -47,6 +47,11 @@ public class XMLStreamParser<@NonNull T> {
     return;
   }
 
+  /**
+   * Get the type of target values streamed by this parser.
+   * 
+   * @return The type of target values streamed by this parser.
+   */
   public Class<T> getTargetValueClass() {
     return targetValueClass;
   }
@@ -126,12 +131,12 @@ public class XMLStreamParser<@NonNull T> {
 
   /**
    * <p>
-   * An interface providing information about the {@linkplain #getStartElement() element} currently being parsed,
-   * including it's {@linkplain #getElementName() name}, {@linkplain #getTargetValueClass() type},
-   * {@linkplain #getElementContext() context}, {@linkplain #getAttrs() attributes}, and {@linkplain #getChildValues()
+   * An interface providing information about an {@linkplain #getStartElement() element} currently being parsed,
+   * including it's {@linkplain #getElementName() name}, {@linkplain #getTargetValueClass() target value type},
+   * {@linkplain #getElementContext() context}, {@linkplain #getAttrs() attributes}, {@linkplain #getChildValues()
    * children}, etc. Generally, when the parser needs to calculate the {@linkplain #getTargetValueClass() target value}
    * for a newly parsed element, an implementation of this interface will be provided to a target value calculation
-   * {@link Function}, which is generally supplied when an element is
+   * {@link Function}, which is generally supplied by the user when an element is
    * {@linkplain XMLStreamParser.SchemaBuilder#defineElement(String, Class, Function) defined}.
    * </p>
    * 
@@ -144,149 +149,467 @@ public class XMLStreamParser<@NonNull T> {
    */
   public interface ElementParsingContext<@NonNull T> {
 
+    /**
+     * Get the {@link Class} of target value produced by the element currently being parsed.
+     * 
+     * @return The {@link Class} of target value produced by the element currently being parsed.
+     */
     public Class<T> getTargetValueClass();
 
+    /**
+     * Get the {@linkplain QName qualified name} of the element currently being parsed.
+     * 
+     * @return The {@linkplain QName qualified name} of the element currently being parsed.
+     */
     public QName getElementName();
 
+    /**
+     * Get the {@linkplain QName#getNamespaceURI() namespace URI} of the element currently being parsed.
+     * 
+     * @return The {@linkplain QName#getNamespaceURI() namespace URI} of the element currently being parsed.
+     */
     public default String getNamespaceURI() {
       return getElementName().getNamespaceURI();
     }
 
+    /**
+     * Get the {@link StartElement} currently being parsed.
+     * 
+     * @return The {@link StartElement} currently being parsed.
+     */
     public StartElement getStartElement();
 
+    /**
+     * Get the stack of {@link StartElement}'s from the document root element down to the element currently being
+     * parsed.
+     * 
+     * @return A {@link Deque} containing the stack of {@link StartElement}'s from the document root element down to the
+     * element currently being parsed.
+     */
     public Deque<StartElement> getElementContext();
 
+    /**
+     * Get the {@link StartElement#getAttributes() attributes} from the element currently being parsed.
+     * 
+     * @return A {@link Map} containing the {@link StartElement#getAttributes() attributes} on the element currently
+     * being parsed.
+     */
     @SuppressWarnings("unchecked")
     public default Map<String,String> getAttrs() {
       return Collections.unmodifiableMap(StreamSupport.stream(Spliterators.spliteratorUnknownSize((Iterator<Attribute>)getStartElement().getAttributes(), Spliterator.NONNULL | Spliterator.DISTINCT | Spliterator.IMMUTABLE), false).map((attr) -> new AbstractMap.SimpleImmutableEntry<>(attr.getName().getLocalPart(), attr.getValue())).collect(Collectors.<Map.Entry<String,String>,String,String> toMap(Map.Entry::getKey, Map.Entry::getValue)));
     }
 
+    /**
+     * Get the {@linkplain Attribute#getValue() value} of an {@linkplain StartElement#getAttributeByName(QName)
+     * attribute} from the element currently being parsed.
+     * 
+     * @param attrName The name of the attribute value to retrieve.
+     * @return The value of the attribute, or <code>null</code> if there is no such attribute.
+     */
     public default @Nullable String getAttrOrNull(final QName attrName) {
       final @Nullable Attribute attr = getStartElement().getAttributeByName(attrName);
       return (attr != null) ? attr.getValue() : null;
     }
 
-    public default <A> @Nullable A getAttrOrNull(final QName attrName, final Function<? super String,? extends A> targetValueFunction) {
+    /**
+     * Get the {@linkplain Attribute#getValue() value} of an {@linkplain StartElement#getAttributeByName(QName)
+     * attribute} from the element currently being parsed.
+     * 
+     * @param <AT> The type of value produced by the supplied <code>attrValueFunction</code>.
+     * @param attrName The name of the attribute value to retrieve.
+     * @param attrValueFunction A {@link Function} which should be applied to the attribute value before it's returned.
+     * @return The value of the attribute, or <code>null</code> if there is no such attribute.
+     */
+    public default <AT> @Nullable AT getAttrOrNull(final QName attrName, final Function<? super String,? extends AT> attrValueFunction) {
       final @Nullable String attr = getAttrOrNull(attrName);
-      return (attr != null) ? targetValueFunction.apply(attr) : null;
+      return (attr != null) ? attrValueFunction.apply(attr) : null;
     }
 
+    /**
+     * Get the {@linkplain Attribute#getValue() value} of an {@linkplain StartElement#getAttributeByName(QName)
+     * attribute} from the element currently being parsed.
+     * 
+     * @param attrLocalName The {@linkplain QName#getLocalPart() local name} of the attribute value to retrieve
+     * ({@linkplain XMLConstants#NULL_NS_URI no namespace} will be used).
+     * @return The value of the attribute, or <code>null</code> if there is no such attribute.
+     */
     public default @Nullable String getAttrOrNull(final String attrLocalName) {
       return getAttrOrNull(new QName(XMLConstants.NULL_NS_URI, attrLocalName));
     }
 
-    public default <A> @Nullable A getAttrOrNull(final String attrLocalName, final Function<? super String,? extends A> targetValueFunction) {
+    /**
+     * Get the {@linkplain Attribute#getValue() value} of an {@linkplain StartElement#getAttributeByName(QName)
+     * attribute} from the element currently being parsed.
+     * 
+     * @param <AT> The type of value produced by the supplied <code>attrValueFunction</code>.
+     * @param attrLocalName The {@linkplain QName#getLocalPart() local name} of the attribute value to retrieve
+     * ({@linkplain XMLConstants#NULL_NS_URI no namespace} will be used).
+     * @param attrValueFunction A {@link Function} which should be applied to the attribute value before it's returned.
+     * @return The value of the attribute, or <code>null</code> if there is no such attribute.
+     */
+    public default <AT> @Nullable AT getAttrOrNull(final String attrLocalName, final Function<? super String,? extends AT> attrValueFunction) {
       final @Nullable String attr = getAttrOrNull(attrLocalName);
-      return (attr != null) ? targetValueFunction.apply(attr) : null;
+      return (attr != null) ? attrValueFunction.apply(attr) : null;
     }
 
+    /**
+     * Get the {@linkplain Attribute#getValue() value} of an {@linkplain StartElement#getAttributeByName(QName)
+     * attribute} from the element currently being parsed.
+     * 
+     * @param attrName The name of the attribute value to retrieve.
+     * @return An {@link Optional} containing the value of the attribute, which will be {@linkplain Optional#empty()
+     * empty} if there is no such attribute.
+     */
     public default Optional<String> getOptionalAttr(final QName attrName) {
       return Optional.ofNullable(getStartElement().getAttributeByName(attrName)).map(Attribute::getValue);
     }
 
-    public default <A> Optional<A> getOptionalAttr(final QName attrName, final Function<? super String,? extends A> targetValueFunction) {
-      return getOptionalAttr(attrName).map(targetValueFunction);
+    /**
+     * Get the {@linkplain Attribute#getValue() value} of an {@linkplain StartElement#getAttributeByName(QName)
+     * attribute} from the element currently being parsed.
+     * 
+     * @param <AT> The type of value produced by the supplied <code>attrValueFunction</code>.
+     * @param attrName The name of the attribute value to retrieve.
+     * @param attrValueFunction A {@link Function} which should be applied to the attribute value before it's returned.
+     * @return An {@link Optional} containing the value of the attribute, which will be {@linkplain Optional#empty()
+     * empty} if there is no such attribute.
+     */
+    public default <AT> Optional<AT> getOptionalAttr(final QName attrName, final Function<? super String,? extends AT> attrValueFunction) {
+      return getOptionalAttr(attrName).map(attrValueFunction);
     }
 
+    /**
+     * Get the {@linkplain Attribute#getValue() value} of an {@linkplain StartElement#getAttributeByName(QName)
+     * attribute} from the element currently being parsed.
+     * 
+     * @param attrLocalName The {@linkplain QName#getLocalPart() local name} of the attribute value to retrieve
+     * ({@linkplain XMLConstants#NULL_NS_URI no namespace} will be used).
+     * @return An {@link Optional} containing the value of the attribute, which will be {@linkplain Optional#empty()
+     * empty} if there is no such attribute.
+     */
     public default Optional<String> getOptionalAttr(final String attrLocalName) {
       return getOptionalAttr(new QName(XMLConstants.NULL_NS_URI, attrLocalName));
     }
 
-    public default <A> Optional<A> getOptionalAttr(final String attrLocalName, final Function<? super String,? extends A> targetValueFunction) {
-      return getOptionalAttr(attrLocalName).map(targetValueFunction);
+    /**
+     * Get the {@linkplain Attribute#getValue() value} of an {@linkplain StartElement#getAttributeByName(QName)
+     * attribute} from the element currently being parsed.
+     * 
+     * @param <AT> The type of value produced by the supplied <code>attrValueFunction</code>.
+     * @param attrLocalName The {@linkplain QName#getLocalPart() local name} of the attribute value to retrieve
+     * ({@linkplain XMLConstants#NULL_NS_URI no namespace} will be used).
+     * @param attrValueFunction A {@link Function} which should be applied to the attribute value before it's returned.
+     * @return An {@link Optional} containing the value of the attribute, which will be {@linkplain Optional#empty()
+     * empty} if there is no such attribute.
+     */
+    public default <AT> Optional<AT> getOptionalAttr(final String attrLocalName, final Function<? super String,? extends AT> attrValueFunction) {
+      return getOptionalAttr(attrLocalName).map(attrValueFunction);
     }
 
+    /**
+     * Get the {@linkplain Attribute#getValue() value} of an {@linkplain StartElement#getAttributeByName(QName)
+     * attribute} from the element currently being parsed.
+     * 
+     * @param attrName The name of the attribute value to retrieve.
+     * @return The value of the attribute (never <code>null</code>).
+     * @throws NoSuchElementException If there is no such attribute.
+     */
     public default String getRequiredAttr(final QName attrName) throws NoSuchElementException {
       return getOptionalAttr(attrName).orElseThrow(() -> new NoSuchElementException("Element '" + getElementName().getLocalPart() + "' has no '" + attrName.getLocalPart() + "' attribute"));
     }
 
-    public default <A> A getRequiredAttr(final QName attrName, final Function<? super String,? extends A> targetValueFunction) throws NoSuchElementException {
-      return targetValueFunction.apply(getRequiredAttr(attrName));
+    /**
+     * Get the {@linkplain Attribute#getValue() value} of an {@linkplain StartElement#getAttributeByName(QName)
+     * attribute} from the element currently being parsed.
+     * 
+     * @param <AT> The type of value produced by the supplied <code>attrValueFunction</code>.
+     * @param attrName The name of the attribute value to retrieve.
+     * @param attrValueFunction A {@link Function} which should be applied to the attribute value before it's returned.
+     * @return The value of the attribute (never <code>null</code>).
+     * @throws NoSuchElementException If there is no such attribute.
+     */
+    public default <AT> AT getRequiredAttr(final QName attrName, final Function<? super String,? extends AT> attrValueFunction) throws NoSuchElementException {
+      return attrValueFunction.apply(getRequiredAttr(attrName));
     }
 
+    /**
+     * Get the {@linkplain Attribute#getValue() value} of an {@linkplain StartElement#getAttributeByName(QName)
+     * attribute} from the element currently being parsed.
+     * 
+     * @param attrLocalName The {@linkplain QName#getLocalPart() local name} of the attribute value to retrieve
+     * ({@linkplain XMLConstants#NULL_NS_URI no namespace} will be used).
+     * @return The value of the attribute (never <code>null</code>).
+     * @throws NoSuchElementException If there is no such attribute.
+     */
     public default String getRequiredAttr(final String attrLocalName) throws NoSuchElementException {
       return getRequiredAttr(new QName(XMLConstants.NULL_NS_URI, attrLocalName));
     }
 
-    public default <A> A getRequiredAttr(final String attrLocalName, final Function<? super String,? extends A> targetValueFunction) throws NoSuchElementException {
-      return targetValueFunction.apply(getRequiredAttr(attrLocalName));
+    /**
+     * Get the {@linkplain Attribute#getValue() value} of an {@linkplain StartElement#getAttributeByName(QName)
+     * attribute} from the element currently being parsed.
+     * 
+     * @param <AT> The type of value produced by the supplied <code>attrValueFunction</code>.
+     * @param attrLocalName The {@linkplain QName#getLocalPart() local name} of the attribute value to retrieve
+     * ({@linkplain XMLConstants#NULL_NS_URI no namespace} will be used).
+     * @param attrValueFunction A {@link Function} which should be applied to the attribute value before it's returned.
+     * @return The value of the attribute (never <code>null</code>).
+     * @throws NoSuchElementException If there is no such attribute.
+     */
+    public default <AT> AT getRequiredAttr(final String attrLocalName, final Function<? super String,? extends AT> attrValueFunction) throws NoSuchElementException {
+      return attrValueFunction.apply(getRequiredAttr(attrLocalName));
     }
 
     /**
-     * This method provides access to the target values of any previously parsed elements within the current document
-     * which were defined as having their target value saved.
+     * Get target values saved by a previously parsed element. The element must have been defined as having it's target
+     * values saved.
      * 
-     * @param <S> The target value type of the desired saved values.
-     * @param savedElementName The name of the element for which saved values are desired. If <code>null</code>,
-     * <em>all</em> saved values of the specified <code>targetValueClass</code> will be returned.
+     * @param <ST> The target value type of the saved values.
+     * @param savedElementName The name of the element for which saved values are desired. If <code>null</code>, the
+     * returned values can come from any element having the specified <code>targetValueClass</code>.
      * @param targetValueClass The target value class of the desired saved values.
-     * @return A Stream of values.
+     * @return A {@link Stream} of values (never <code>null</code>).
      */
-    public <@NonNull S> Stream<S> getSavedValues(final @Nullable QName savedElementName, final Class<S> targetValueClass);
+    public <@NonNull ST> Stream<ST> getSavedValues(final @Nullable QName savedElementName, final Class<ST> targetValueClass);
 
-    public default <@NonNull S> Stream<S> getSavedValues(final @Nullable String savedElementLocalName, final Class<S> targetValueClass) {
+    /**
+     * Get target values saved by a previously parsed element. The element must have been defined as having it's target
+     * values saved.
+     * 
+     * @param <ST> The target value type of the saved value.
+     * @param savedElementLocalName The {@linkplain QName#getLocalPart() local name} of the element for which saved
+     * values are desired (the {@linkplain #getNamespaceURI() namespace for this element} will be used). If
+     * <code>null</code>, the returned values can come from any element having the specified
+     * <code>targetValueClass</code>.
+     * @param targetValueClass The target value class of the desired saved values.
+     * @return A {@link Stream} of values (never <code>null</code>).
+     */
+    public default <@NonNull ST> Stream<ST> getSavedValues(final @Nullable String savedElementLocalName, final Class<ST> targetValueClass) {
       return getSavedValues((savedElementLocalName != null) ? new QName(getNamespaceURI(), savedElementLocalName) : null, targetValueClass);
     }
 
-    public default <@NonNull S> Optional<S> getOptionalSavedValue(final @Nullable QName savedElementName, final Class<S> targetValueClass) throws NoSuchElementException {
+    /**
+     * Get the first target value saved by a previously parsed element. The element must have been defined as having
+     * it's target values saved.
+     * 
+     * @param <ST> The target value type of the saved value.
+     * @param savedElementName The name of the element for which the saved value is desired. If <code>null</code>, the
+     * returned value can come from any element having the specified <code>targetValueClass</code>.
+     * @param targetValueClass The target value class of the desired saved values.
+     * @return An {@link Optional} containing the first saved value, which will be {@linkplain Optional#empty() empty}
+     * if there are none.
+     */
+    public default <@NonNull ST> Optional<ST> getOptionalSavedValue(final @Nullable QName savedElementName, final Class<ST> targetValueClass) {
       return getSavedValues(savedElementName, targetValueClass).findFirst();
     }
 
-    public default <@NonNull S> Optional<S> getOptionalSavedValue(final @Nullable String savedElementLocalName, final Class<S> targetValueClass) throws NoSuchElementException {
+    /**
+     * Get the first target value saved by a previously parsed element. The element must have been defined as having
+     * it's target values saved.
+     * 
+     * @param <ST> The target value type of the saved value.
+     * @param savedElementLocalName The {@linkplain QName#getLocalPart() local name} of the element for which saved
+     * values are desired (the {@linkplain #getNamespaceURI() namespace for this element} will be used). If
+     * <code>null</code>, the returned value can come from any element having the specified
+     * <code>targetValueClass</code>.
+     * @param targetValueClass The target value class of the desired saved value.
+     * @return An {@link Optional} containing the first saved value, which will be {@linkplain Optional#empty() empty}
+     * if there are none.
+     */
+    public default <@NonNull ST> Optional<ST> getOptionalSavedValue(final @Nullable String savedElementLocalName, final Class<ST> targetValueClass) {
       return getOptionalSavedValue((savedElementLocalName != null) ? new QName(getNamespaceURI(), savedElementLocalName) : null, targetValueClass);
     }
 
-    public default <@NonNull S> @Nullable S getSavedValueOrNull(final @Nullable QName savedElementName, final Class<S> targetValueClass) throws NoSuchElementException {
-      final Optional<S> saved = getOptionalSavedValue(savedElementName, targetValueClass);
+    /**
+     * Get the first target value saved by a previously parsed element. The element must have been defined as having
+     * it's target values saved.
+     * 
+     * @param <ST> The target value type of the saved value.
+     * @param savedElementName The name of the element for which the saved value is desired. If <code>null</code>, the
+     * returned value can come from any element having the specified <code>targetValueClass</code>.
+     * @param targetValueClass The target value class of the desired saved values.
+     * @return The first saved value, or <code>null</code> if there are none.
+     */
+    public default <@NonNull ST> @Nullable ST getSavedValueOrNull(final @Nullable QName savedElementName, final Class<ST> targetValueClass) {
+      final Optional<ST> saved = getOptionalSavedValue(savedElementName, targetValueClass);
       return saved.isPresent() ? saved.get() : null;
     }
 
-    public default <@NonNull S> @Nullable S getSavedValueOrNull(final @Nullable String savedElementLocalName, final Class<S> targetValueClass) throws NoSuchElementException {
-      final Optional<S> saved = getOptionalSavedValue(savedElementLocalName, targetValueClass);
+    /**
+     * Get the first target value saved by a previously parsed element. The element must have been defined as having
+     * it's target values saved.
+     * 
+     * @param <ST> The target value type of the saved value.
+     * @param savedElementLocalName The {@linkplain QName#getLocalPart() local name} of the element for which saved
+     * values are desired (the {@linkplain #getNamespaceURI() namespace for this element} will be used). If
+     * <code>null</code>, the returned value can come from any element having the specified
+     * <code>targetValueClass</code>.
+     * @param targetValueClass The target value class of the desired saved value.
+     * @return The first saved value, or <code>null</code> if there are none.
+     */
+    public default <@NonNull ST> @Nullable ST getSavedValueOrNull(final @Nullable String savedElementLocalName, final Class<ST> targetValueClass) {
+      final Optional<ST> saved = getOptionalSavedValue(savedElementLocalName, targetValueClass);
       return saved.isPresent() ? saved.get() : null;
     }
 
-    public default <@NonNull S> S getRequiredSavedValue(final @Nullable QName savedElementName, final Class<S> targetValueClass) throws NoSuchElementException {
+    /**
+     * Get the first target value saved by a previously parsed element. The element must have been defined as having
+     * it's target values saved.
+     * 
+     * @param <ST> The target value type of the saved value.
+     * @param savedElementName The name of the element for which the saved value is desired. If <code>null</code>, the
+     * returned value can come from any element having the specified <code>targetValueClass</code>.
+     * @param targetValueClass The target value class of the desired saved values.
+     * @return The first saved value (never <code>null</code>).
+     * @throws NoSuchElementException If there is no matching saved value.
+     */
+    public default <@NonNull ST> ST getRequiredSavedValue(final @Nullable QName savedElementName, final Class<ST> targetValueClass) throws NoSuchElementException {
       return getOptionalSavedValue(savedElementName, targetValueClass).orElseThrow(() -> new NoSuchElementException("No " + ((savedElementName != null) ? "'" + savedElementName.getLocalPart() + "' " : "") + " saved element with '" + targetValueClass.getSimpleName() + "' target value class found"));
     }
 
-    public default <@NonNull S> S getRequiredSavedValue(final @Nullable String savedElementLocalName, final Class<S> targetValueClass) throws NoSuchElementException {
+    /**
+     * Get the first target value saved by a previously parsed element. The element must have been defined as having
+     * it's target values saved.
+     * 
+     * @param <ST> The target value type of the saved value.
+     * @param savedElementLocalName The {@linkplain QName#getLocalPart() local name} of the element for which saved
+     * values are desired (the {@linkplain #getNamespaceURI() namespace for this element} will be used). If
+     * <code>null</code>, the returned value can come from any element having the specified
+     * <code>targetValueClass</code>.
+     * @param targetValueClass The target value class of the desired saved value.
+     * @return The first saved value (never <code>null</code>).
+     * @throws NoSuchElementException If there is no matching saved value.
+     */
+    public default <@NonNull ST> ST getRequiredSavedValue(final @Nullable String savedElementLocalName, final Class<ST> targetValueClass) throws NoSuchElementException {
       return getRequiredSavedValue((savedElementLocalName != null) ? new QName(getNamespaceURI(), savedElementLocalName) : null, targetValueClass);
     }
 
+    /**
+     * Get target values from children of the element currently being parsed.
+     * 
+     * @return A {@link Stream} of child element values of the form
+     * <code>{@link java.util.Map.Entry Map.Entry}&lt;{@link java.util.Map.Entry Map.Entry}&lt;ChildElementName,TargetValueClass&gt;,{@link List}&lt;TargetValue&gt;&gt;</code>.
+     */
     public Stream<Map.Entry<Map.Entry<QName,Class<?>>,List<?>>> getChildValues();
 
-    public default <@NonNull ET> Stream<ET> getChildValues(final @Nullable QName childElementName, final Class<ET> targetValueClass) {
+    /**
+     * Get target values from a child of the element currently being parsed.
+     * 
+     * @param <CT> The target value type of the child values.
+     * @param childElementName The name of the element for which child target values are desired. If <code>null</code>,
+     * the returned values can come from any element having the specified <code>targetValueClass</code>.
+     * @param targetValueClass The target value class of the desired child values.
+     * @return A {@link Stream} of values (never <code>null</code>).
+     */
+    public default <@NonNull CT> Stream<CT> getChildValues(final @Nullable QName childElementName, final Class<CT> targetValueClass) {
       return getChildValues().filter((entry) -> (childElementName == null) || (childElementName.equals(entry.getKey().getKey()))).filter((entry) -> targetValueClass.isAssignableFrom(entry.getKey().getValue())).<List<?>> map(Map.Entry::getValue).flatMap(List::stream).map((value) -> targetValueClass.cast(value));
     }
 
-    public default <@NonNull ET> Stream<ET> getChildValues(final @Nullable String childElementLocalName, final Class<ET> targetValueClass) {
+    /**
+     * Get target values from a child of the element currently being parsed.
+     * 
+     * @param <CT> The target value type of the child values.
+     * @param childElementLocalName The {@linkplain QName#getLocalPart() local name} of the element for which child
+     * target values are desired (the {@linkplain #getNamespaceURI() namespace for this element} will be used). If
+     * <code>null</code>, the returned values can come from any element having the specified
+     * <code>targetValueClass</code>.
+     * @param targetValueClass The target value class of the desired child values.
+     * @return A {@link Stream} of values (never <code>null</code>).
+     */
+    public default <@NonNull CT> Stream<CT> getChildValues(final @Nullable String childElementLocalName, final Class<CT> targetValueClass) {
       return getChildValues((childElementLocalName != null) ? new QName(getNamespaceURI(), childElementLocalName) : null, targetValueClass);
     }
 
-    public default <@NonNull ET> Optional<ET> getOptionalChildValue(final @Nullable QName childElementName, final Class<ET> targetValueClass) {
+    /**
+     * Get the first target value from a child of the element currently being parsed.
+     * 
+     * @param <CT> The target value type of the child value.
+     * @param childElementName The name of the element for which the child target value is desired. If
+     * <code>null</code>, the returned value can come from any element having the specified
+     * <code>targetValueClass</code>.
+     * @param targetValueClass The target value class of the desired child value.
+     * @return An {@link Optional} containing the first child value, which will be {@linkplain Optional#empty() empty}
+     * if there are none.
+     */
+    public default <@NonNull CT> Optional<CT> getOptionalChildValue(final @Nullable QName childElementName, final Class<CT> targetValueClass) {
       return getChildValues(childElementName, targetValueClass).findFirst();
     }
 
-    public default <@NonNull ET> Optional<ET> getOptionalChildValue(final @Nullable String childElementLocalName, final Class<ET> targetValueClass) {
+    /**
+     * Get the first target value from a child of the element currently being parsed.
+     * 
+     * @param <CT> The target value type of the child value.
+     * @param childElementLocalName The {@linkplain QName#getLocalPart() local name} of the element for which the child
+     * target value is desired (the {@linkplain #getNamespaceURI() namespace for this element} will be used). If
+     * <code>null</code>, the returned value can come from any element having the specified
+     * <code>targetValueClass</code>.
+     * @param targetValueClass The target value class of the desired child value.
+     * @return An {@link Optional} containing the first child value, which will be {@linkplain Optional#empty() empty}
+     * if there are none.
+     */
+    public default <@NonNull CT> Optional<CT> getOptionalChildValue(final @Nullable String childElementLocalName, final Class<CT> targetValueClass) {
       return getOptionalChildValue((childElementLocalName != null) ? new QName(getNamespaceURI(), childElementLocalName) : null, targetValueClass);
     }
 
-    public default <@NonNull ET> @Nullable ET getChildValueOrNull(final @Nullable QName childElementName, final Class<ET> targetValueClass) {
-      final Optional<ET> child = getOptionalChildValue(childElementName, targetValueClass);
+    /**
+     * Get the first target value from a child of the element currently being parsed.
+     * 
+     * @param <CT> The target value type of the child value.
+     * @param childElementName The name of the element for which the child target value is desired. If
+     * <code>null</code>, the returned value can come from any element having the specified
+     * <code>targetValueClass</code>.
+     * @param targetValueClass The target value class of the desired child value.
+     * @return The first child value, or <code>null</code> if there are none.
+     */
+    public default <@NonNull CT> @Nullable CT getChildValueOrNull(final @Nullable QName childElementName, final Class<CT> targetValueClass) {
+      final Optional<CT> child = getOptionalChildValue(childElementName, targetValueClass);
       return child.isPresent() ? child.get() : null;
     }
 
-    public default <@NonNull ET> @Nullable ET getChildValueOrNull(final @Nullable String childElementLocalName, final Class<ET> targetValueClass) {
-      final Optional<ET> child = getOptionalChildValue(childElementLocalName, targetValueClass);
+    /**
+     * Get the first target value from a child of the element currently being parsed.
+     * 
+     * @param <CT> The target value type of the child value.
+     * @param childElementLocalName The {@linkplain QName#getLocalPart() local name} of the element for which the child
+     * target value is desired (the {@linkplain #getNamespaceURI() namespace for this element} will be used). If
+     * <code>null</code>, the returned value can come from any element having the specified
+     * <code>targetValueClass</code>.
+     * @param targetValueClass The target value class of the desired child value.
+     * @return The first child value, or <code>null</code> if there are none.
+     */
+    public default <@NonNull CT> @Nullable CT getChildValueOrNull(final @Nullable String childElementLocalName, final Class<CT> targetValueClass) {
+      final Optional<CT> child = getOptionalChildValue(childElementLocalName, targetValueClass);
       return child.isPresent() ? child.get() : null;
     }
 
-    public default <@NonNull ET> ET getRequiredChildValue(final @Nullable QName childElementName, final Class<ET> targetValueClass) throws NoSuchElementException {
+    /**
+     * Get the first target value from a child of the element currently being parsed.
+     * 
+     * @param <CT> The target value type of the child value.
+     * @param childElementName The name of the element for which the child target value is desired. If
+     * <code>null</code>, the returned value can come from any element having the specified
+     * <code>targetValueClass</code>.
+     * @param targetValueClass The target value class of the desired child value.
+     * @return The first child value (never <code>null</code>).
+     * @throws NoSuchElementException If there is no matching child value.
+     */
+    public default <@NonNull CT> CT getRequiredChildValue(final @Nullable QName childElementName, final Class<CT> targetValueClass) throws NoSuchElementException {
       return getOptionalChildValue(childElementName, targetValueClass).orElseThrow(() -> new NoSuchElementException("No " + ((childElementName != null) ? "'" + childElementName.getLocalPart() + "' " : "") + " child element with '" + targetValueClass.getSimpleName() + "' target class found"));
     }
 
-    public default <@NonNull ET> ET getRequiredChildValue(final @Nullable String childElementLocalName, final Class<ET> targetValueClass) throws NoSuchElementException {
+    /**
+     * Get the first target value from a child of the element currently being parsed.
+     * 
+     * @param <CT> The target value type of the child value.
+     * @param childElementLocalName The {@linkplain QName#getLocalPart() local name} of the element for which the child
+     * target value is desired (the {@linkplain #getNamespaceURI() namespace for this element} will be used). If
+     * <code>null</code>, the returned value can come from any element having the specified
+     * <code>targetValueClass</code>.
+     * @param targetValueClass The target value class of the desired child value.
+     * @return The first child value (never <code>null</code>).
+     * @throws NoSuchElementException If there is no matching child value.
+     */
+    public default <@NonNull CT> CT getRequiredChildValue(final @Nullable String childElementLocalName, final Class<CT> targetValueClass) throws NoSuchElementException {
       return getRequiredChildValue((childElementLocalName != null) ? new QName(getNamespaceURI(), childElementLocalName) : null, targetValueClass);
     }
 
@@ -298,7 +621,7 @@ public class XMLStreamParser<@NonNull T> {
     private final XMLEventReader reader;
 
     public TargetValueSpliterator(final ElementParser<?>.ParsingContextImpl parentContext, final XMLEventReader reader) throws IllegalArgumentException {
-      if (!((ElementParser<?>)parentContext.getParser()).getChildParsers().stream().anyMatch(targetParser::equals)) throw new IllegalStateException("Current parser not parent of target parser");
+      if (!parentContext.getParser().getChildParsers().stream().anyMatch(targetParser::equals)) throw new IllegalStateException("Current parser not parent of target parser");
       this.parentContext = parentContext;
       this.reader = reader;
       return;
@@ -331,7 +654,7 @@ public class XMLStreamParser<@NonNull T> {
             return false;
           }
 
-          final Optional<? extends ContentParser<?,?>> parser = ((ElementParser<?>)parentContext.getParser()).findChildParserFor(event);
+          final Optional<? extends ContentParser<?,?>> parser = parentContext.getParser().findChildParserFor(event);
           if (parser.isPresent()) {
             if (parser.get() == targetParser) { // There could be some other content before the next applicable target event.
               targetEvent = event;
@@ -397,39 +720,48 @@ public class XMLStreamParser<@NonNull T> {
 
   } // XMLStreamParsingException
 
-  public abstract static class ContextualParsingException extends ParsingException {
+  /**
+   * A {@link ParsingException ParsingException} associated with an {@link #getElementParsingContext()
+   * ElementParsingContext}.
+   */
+  public abstract static class ElementParsingContextException extends ParsingException {
     protected final ElementParser<?>.ParsingContextImpl context;
 
-    protected ContextualParsingException(final ElementParser<?>.ParsingContextImpl context) {
+    protected ElementParsingContextException(final ElementParser<?>.ParsingContextImpl context) {
       super();
       this.context = context;
       return;
     }
 
-    protected ContextualParsingException(final Throwable cause, final ElementParser<?>.ParsingContextImpl context) {
+    protected ElementParsingContextException(final Throwable cause, final ElementParser<?>.ParsingContextImpl context) {
       super(cause);
       this.context = context;
       return;
     }
 
-    protected ContextualParsingException(final String message, final Throwable cause, final ElementParser<?>.ParsingContextImpl context) {
+    protected ElementParsingContextException(final String message, final Throwable cause, final ElementParser<?>.ParsingContextImpl context) {
       super(message, cause);
       this.context = context;
       return;
     }
 
+    /**
+     * Get the {@link XMLStreamParser.ElementParsingContext ElementParsingContext} when this exception occurred.
+     * 
+     * @return The {@link XMLStreamParser.ElementParsingContext ElementParsingContext} when this exception occurred.
+     */
     public ElementParsingContext<?> getElementParsingContext() {
       return context;
     }
 
-  } // ContextualParsingException
+  } // ElementParsingContextException
 
   /**
    * A {@link ParsingException ParsingException} which indicates a problem occurred while mapping the
    * {@linkplain XMLStreamParser#parse(InputStream) parsed} XML into a {@linkplain XMLStreamParser#getTargetValueClass()
    * target value}.
    */
-  public static class ElementValueParsingException extends ContextualParsingException {
+  public static class ElementValueParsingException extends ElementParsingContextException {
 
     protected ElementValueParsingException(final Exception cause, final ElementParser<?>.ParsingContextImpl context) {
       super(cause.getClass().getName() + " parsing '" + context.getStartElement().getName().getLocalPart() + "' element: " + cause.getMessage(), Objects.requireNonNull(cause, "null cause"), context);
@@ -449,7 +781,7 @@ public class XMLStreamParser<@NonNull T> {
    * parsing} and return the current {@linkplain #getParsingContextImpl() parsing context} when a specified
    * {@linkplain XMLStreamParser.ElementParser element} is encountered.
    */
-  private static class TerminatingParserException extends ContextualParsingException {
+  private static class TerminatingParserException extends ElementParsingContextException {
 
     public TerminatingParserException(final ElementParser<?>.ParsingContextImpl context) {
       super(context);
@@ -903,12 +1235,12 @@ public class XMLStreamParser<@NonNull T> {
    * 
    * <p>
    * XML uses a tree structure, and you use this class to define the schema for your XML from the bottom up, starting
-   * with the "leaf" nodes, and then
-   * {@linkplain XMLStreamParser.SchemaBuilder.ChildElementListBuilder#addReferencedElementAsChild(QName, Class)
-   * referencing} those when defining the parent elements which utilize those leaves as their own children, and so on
-   * and so forth, working your way up to the root document element. All element definitions map their content to some
-   * type of {@linkplain XMLStreamParser#getTargetValueClass() target value}. This builder class allows you to define
-   * several types of elements within your schema. The first are low-level leaf-type
+   * with defining the "leaf" nodes, and then
+   * {@linkplain XMLStreamParser.SchemaBuilder.ChildElementListBuilder#addChild(QName, Class) referencing} those when
+   * defining the parent elements which utilize those leaves as their own children, and so on and so forth, working your
+   * way up to the root document element. All element definitions map their content to some type of
+   * {@linkplain XMLStreamParser#getTargetValueClass() target value}. This builder class allows you to define several
+   * types of elements within your schema. The first are low-level leaf-type
    * {@linkplain #defineSimpleElement(String, Class, BiFunction, boolean) simple} elements, and the generic
    * {@linkplain #defineStringElement(String, boolean) string} version. Next, the most common, are
    * {@linkplain #defineElement(String, Class, Function) typed elements}, for binding to your own data model. And then,
@@ -1047,9 +1379,9 @@ public class XMLStreamParser<@NonNull T> {
      * Importing a definition will <em>not</em> alter the namespace the element was originally defined in, or any of
      * it's other attributes. The imported definition will retain any child elements it was created with, though only
      * the imported element itself will be available for
-     * {@linkplain XMLStreamParser.SchemaBuilder.ChildElementListBuilder#addReferencedElementAsChild(QName, Class)
-     * reference} by other elements being defined within this schema, whereas the imported element's children will
-     * <em>not</em> be available to be referenced directly within this schema.
+     * {@linkplain XMLStreamParser.SchemaBuilder.ChildElementListBuilder#addChild(QName, Class) reference} by other
+     * elements being defined within this schema, whereas the imported element's children will <em>not</em> be available
+     * to be referenced directly within this schema.
      * </p>
      * 
      * @param <ET> The type of target value produced by the imported element.
@@ -1059,6 +1391,9 @@ public class XMLStreamParser<@NonNull T> {
      * wish to import.
      * @return The {@link XMLStreamParser.SchemaBuilder SchemaBuilder} this method was invoked on.
      * @throws NoSuchElementException If the referenced element hasn't been defined in the <em>fromSchemaBuilder</em>.
+     * @see #importElementDefinition(XMLStreamParser.SchemaBuilder, String, Class)
+     * @see #importElementDefinition(XMLStreamParser.SchemaBuilder, QName)
+     * @see #importElementDefinition(XMLStreamParser.SchemaBuilder, String)
      */
     public final <@NonNull ET> SB importElementDefinition(final SchemaBuilder<?> fromSchemaBuilder, final QName elementName, final Class<ET> targetValueClass) throws NoSuchElementException {
       return addParser(fromSchemaBuilder.getParser(elementName, targetValueClass));
@@ -1073,9 +1408,9 @@ public class XMLStreamParser<@NonNull T> {
      * Importing a definition will <em>not</em> alter the namespace the element was originally defined in, or any of
      * it's other attributes. The imported definition will retain any child elements it was created with, though only
      * the imported element itself will be available for
-     * {@linkplain XMLStreamParser.SchemaBuilder.ChildElementListBuilder#addReferencedElementAsChild(QName, Class)
-     * reference} by other elements being defined within this schema, whereas the imported element's children will
-     * <em>not</em> be available to be referenced directly within this schema.
+     * {@linkplain XMLStreamParser.SchemaBuilder.ChildElementListBuilder#addChild(QName, Class) reference} by other
+     * elements being defined within this schema, whereas the imported element's children will <em>not</em> be available
+     * to be referenced directly within this schema.
      * </p>
      * 
      * @param <ET> The type of target value produced by the imported element.
@@ -1086,6 +1421,9 @@ public class XMLStreamParser<@NonNull T> {
      * wish to import.
      * @return The {@link XMLStreamParser.SchemaBuilder SchemaBuilder} this method was invoked on.
      * @throws NoSuchElementException If the referenced element hasn't been defined in the <em>fromSchemaBuilder</em>.
+     * @see #importElementDefinition(XMLStreamParser.SchemaBuilder, QName, Class)
+     * @see #importElementDefinition(XMLStreamParser.SchemaBuilder, QName)
+     * @see #importElementDefinition(XMLStreamParser.SchemaBuilder, String)
      */
     public final <@NonNull ET> SB importElementDefinition(final SchemaBuilder<?> fromSchemaBuilder, final String elementLocalName, final Class<ET> targetValueClass) throws NoSuchElementException {
       return importElementDefinition(fromSchemaBuilder, fromSchemaBuilder.qn(elementLocalName), targetValueClass);
@@ -1100,15 +1438,18 @@ public class XMLStreamParser<@NonNull T> {
      * Importing a definition will <em>not</em> alter the namespace the element was originally defined in, or any of
      * it's other attributes. The imported definition will retain any child elements it was created with, though only
      * the imported element itself will be available for
-     * {@linkplain XMLStreamParser.SchemaBuilder.ChildElementListBuilder#addReferencedElementAsChild(QName, Class)
-     * reference} by other elements being defined within this schema, whereas the imported element's children will
-     * <em>not</em> be available to be referenced directly within this schema.
+     * {@linkplain XMLStreamParser.SchemaBuilder.ChildElementListBuilder#addChild(QName, Class) reference} by other
+     * elements being defined within this schema, whereas the imported element's children will <em>not</em> be available
+     * to be referenced directly within this schema.
      * </p>
      * 
      * @param fromSchemaBuilder The source schema to import the element from.
      * @param elementName The name of the element definition you wish to import.
      * @return The {@link XMLStreamParser.SchemaBuilder SchemaBuilder} this method was invoked on.
      * @throws NoSuchElementException If the referenced element hasn't been defined in the <em>fromSchemaBuilder</em>.
+     * @see #importElementDefinition(XMLStreamParser.SchemaBuilder, QName, Class)
+     * @see #importElementDefinition(XMLStreamParser.SchemaBuilder, String, Class)
+     * @see #importElementDefinition(XMLStreamParser.SchemaBuilder, String)
      */
     public final SB importElementDefinition(final SchemaBuilder<?> fromSchemaBuilder, final QName elementName) throws NoSuchElementException {
       return addParser(fromSchemaBuilder.getParser(elementName));
@@ -1123,9 +1464,9 @@ public class XMLStreamParser<@NonNull T> {
      * Importing a definition will <em>not</em> alter the namespace the element was originally defined in, or any of
      * it's other attributes. The imported definition will retain any child elements it was created with, though only
      * the imported element itself will be available for
-     * {@linkplain XMLStreamParser.SchemaBuilder.ChildElementListBuilder#addReferencedElementAsChild(QName, Class)
-     * reference} by other elements being defined within this schema, whereas the imported element's children will
-     * <em>not</em> be available to be referenced directly within this schema.
+     * {@linkplain XMLStreamParser.SchemaBuilder.ChildElementListBuilder#addChild(QName, Class) reference} by other
+     * elements being defined within this schema, whereas the imported element's children will <em>not</em> be available
+     * to be referenced directly within this schema.
      * </p>
      * 
      * @param fromSchemaBuilder The source schema to import the element from.
@@ -1133,6 +1474,9 @@ public class XMLStreamParser<@NonNull T> {
      * import (the {@linkplain #getNamespace() current namespace} for the <em>fromSchemaBuilder</em> will be used).
      * @return The {@link XMLStreamParser.SchemaBuilder SchemaBuilder} this method was invoked on.
      * @throws NoSuchElementException If the referenced element hasn't been defined in the <em>fromSchemaBuilder</em>.
+     * @see #importElementDefinition(XMLStreamParser.SchemaBuilder, QName, Class)
+     * @see #importElementDefinition(XMLStreamParser.SchemaBuilder, String, Class)
+     * @see #importElementDefinition(XMLStreamParser.SchemaBuilder, QName)
      */
     public final SB importElementDefinition(final SchemaBuilder<?> fromSchemaBuilder, final String elementLocalName) throws NoSuchElementException {
       return importElementDefinition(fromSchemaBuilder, fromSchemaBuilder.qn(elementLocalName));
@@ -1310,7 +1654,7 @@ public class XMLStreamParser<@NonNull T> {
      * made available (via the {@link XMLStreamParser.ElementParsingContext ElementParsingContext}) to the target value
      * calculation functions of all subsequent elements parsed within the current document?
      * @return A {@link XMLStreamParser.SchemaBuilder.ChildElementListBuilder ChildElementListBuilder} which you can use
-     * to define which elements this definition will have as children by referencing other existing element definitions.
+     * to define which elements this definition will have as children.
      * @see #defineElement(String, Class, Function)
      * @see #defineElementWithInjectedTargetBuilder(String, Class, boolean)
      * @see #defineSimpleElement(String, Class, BiFunction, boolean)
@@ -1536,7 +1880,7 @@ public class XMLStreamParser<@NonNull T> {
      * @param containerElementLocalName The {@linkplain QName#getLocalPart() local name} of the element being defined
      * (the {@linkplain #getNamespace() current namespace} will be used).
      * @return A {@link XMLStreamParser.SchemaBuilder.ChildElementListBuilder ChildElementListBuilder} which you can use
-     * to define which elements this definition will have as children by referencing other existing element definitions.
+     * to define which elements this definition will have as children.
      */
     public final ChildElementListBuilder<@NonNull ?> defineContainerElementWithChildBuilder(final String containerElementLocalName) {
       return new ChildElementListBuilder<ElementParser<?>>(ElementParser.WILDCARD_CLASS, (childParsers) -> addParser(new ContainerElementParser(qn(containerElementLocalName), childParsers)));
@@ -1553,6 +1897,7 @@ public class XMLStreamParser<@NonNull T> {
      * created parser.
      * @return The newly created {@link XMLStreamParser} instance.
      * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+     * @see #createParser(Class, String, String)
      */
     public <@NonNull T> XMLStreamParser<T> createParser(final Class<T> targetValueClass, final QName documentElementName, final QName targetElementName) throws NoSuchElementException {
       return new XMLStreamParser<T>(targetValueClass, getParser(documentElementName), getParser(targetElementName, targetValueClass));
@@ -1564,14 +1909,17 @@ public class XMLStreamParser<@NonNull T> {
      * @param <T> The type of target values to be streamed by the created parser.
      * @param targetValueClass The {@link Class} object for the type of
      * {@linkplain XMLStreamParser#getTargetValueClass() target value} which will be streamed by the created parser.
-     * @param documentElementName The name of the root document element which will be consumed by the created parser.
-     * @param targetElementName The name of the primary content element whose target values will be streamed by the
-     * created parser.
+     * @param documentElementLocalName The {@linkplain QName#getLocalPart() local name} of the root document element
+     * which will be consumed by the created parser (the {@linkplain #getNamespace() current namespace} will be used).
+     * @param targetElementLocalName The {@linkplain QName#getLocalPart() local name} of the primary content element
+     * whose target values will be streamed by the created parser (the {@linkplain #getNamespace() current namespace}
+     * will be used).
      * @return The newly created {@link XMLStreamParser} instance.
      * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+     * @see #createParser(Class, QName, QName)
      */
-    public <@NonNull T> XMLStreamParser<T> createParser(final Class<T> targetValueClass, final String documentElementName, final String targetElementName) throws NoSuchElementException {
-      return createParser(targetValueClass, qn(documentElementName), qn(targetElementName));
+    public <@NonNull T> XMLStreamParser<T> createParser(final Class<T> targetValueClass, final String documentElementLocalName, final String targetElementLocalName) throws NoSuchElementException {
+      return createParser(targetValueClass, qn(documentElementLocalName), qn(targetElementLocalName));
     }
 
     /**
@@ -1585,6 +1933,12 @@ public class XMLStreamParser<@NonNull T> {
       protected final Consumer<PT[]> consumer;
       protected final Set<PT> childParsers = new CopyOnWriteArraySet<>();
 
+      /**
+       * Construct a new <code>ChildElementListBuilder</code>.
+       * 
+       * @param parserType The type of elements being collected by this builder.
+       * @param consumer The {@link Consumer} of the resulting list of child elements.
+       */
       public ChildElementListBuilder(final Class<PT> parserType, final Consumer<PT[]> consumer) {
         this.parserType = Objects.requireNonNull(parserType);
         this.consumer = Objects.requireNonNull(consumer);
@@ -1607,8 +1961,11 @@ public class XMLStreamParser<@NonNull T> {
        * @return The {@link XMLStreamParser.SchemaBuilder.ChildElementListBuilder ChildElementListBuilder} this method
        * was invoked on.
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #addChild(String, Class)
+       * @see #addChild(QName)
+       * @see #addChild(String)
        */
-      public <@NonNull CT> ChildElementListBuilder<PT> addReferencedElementAsChild(final QName elementName, final Class<CT> targetValueClass) throws NoSuchElementException {
+      public <@NonNull CT> ChildElementListBuilder<PT> addChild(final QName elementName, final Class<CT> targetValueClass) throws NoSuchElementException {
         childParsers.add(getParser(parserType, elementName, targetValueClass));
         return this;
       }
@@ -1623,15 +1980,19 @@ public class XMLStreamParser<@NonNull T> {
        * </p>
        * 
        * @param <CT> The type of target value which will be constructed when the child element is parsed.
-       * @param elementName The name of the referenced element you wish to add as a child.
+       * @param elementName The {@linkplain QName#getLocalPart() local name} of the referenced element you wish to add
+       * as a child (the {@linkplain XMLStreamParser.SchemaBuilder#getNamespace() current namespace} will be used).
        * @param targetValueClass The target value type produced by the referenced element definition you wish to add as
        * a child.
        * @return The {@link XMLStreamParser.SchemaBuilder.ChildElementListBuilder ChildElementListBuilder} this method
        * was invoked on.
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #addChild(QName, Class)
+       * @see #addChild(QName)
+       * @see #addChild(String)
        */
-      public <@NonNull CT> ChildElementListBuilder<PT> addReferencedElementAsChild(final String elementName, final Class<CT> targetValueClass) throws NoSuchElementException {
-        return addReferencedElementAsChild(qn(elementName), targetValueClass);
+      public <@NonNull CT> ChildElementListBuilder<PT> addChild(final String elementName, final Class<CT> targetValueClass) throws NoSuchElementException {
+        return addChild(qn(elementName), targetValueClass);
       }
 
       /**
@@ -1647,8 +2008,11 @@ public class XMLStreamParser<@NonNull T> {
        * @return The {@link XMLStreamParser.SchemaBuilder.ChildElementListBuilder ChildElementListBuilder} this method
        * was invoked on.
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #addChild(QName, Class)
+       * @see #addChild(String, Class)
+       * @see #addChild(String)
        */
-      public ChildElementListBuilder<PT> addReferencedElementAsChild(final QName elementName) throws NoSuchElementException {
+      public ChildElementListBuilder<PT> addChild(final QName elementName) throws NoSuchElementException {
         childParsers.add(getParser(parserType, elementName));
         return this;
       }
@@ -1662,13 +2026,17 @@ public class XMLStreamParser<@NonNull T> {
        * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
        * </p>
        * 
-       * @param elementName The name of the referenced element you wish to add as a child.
+       * @param elementName The {@linkplain QName#getLocalPart() local name} of the referenced element you wish to add
+       * as a child (the {@linkplain XMLStreamParser.SchemaBuilder#getNamespace() current namespace} will be used).
        * @return The {@link XMLStreamParser.SchemaBuilder.ChildElementListBuilder ChildElementListBuilder} this method
        * was invoked on.
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #addChild(QName, Class)
+       * @see #addChild(String, Class)
+       * @see #addChild(QName)
        */
-      public ChildElementListBuilder<PT> addReferencedElementAsChild(final String elementName) throws NoSuchElementException {
-        return addReferencedElementAsChild(qn(elementName));
+      public ChildElementListBuilder<PT> addChild(final String elementName) throws NoSuchElementException {
+        return addChild(qn(elementName));
       }
 
       /**
@@ -1678,7 +2046,7 @@ public class XMLStreamParser<@NonNull T> {
        * @return The {@link XMLStreamParser.SchemaBuilder SchemaBuilder} being used to define the parent element.
        */
       @SuppressWarnings("unchecked")
-      public SB completeElementDefinition() {
+      public SB completeDefinition() {
         consumer.accept(childParsers.stream().toArray((n) -> (PT[])java.lang.reflect.Array.newInstance(parserType, n)));
         return schemaBuilderType.cast(SchemaBuilder.this);
       }
@@ -1689,8 +2057,8 @@ public class XMLStreamParser<@NonNull T> {
      * This class is used during the
      * {@linkplain XMLStreamParser.SchemaBuilder#defineElementWithInjectedTargetBuilder(String, Class, boolean)
      * definition of an injected element} in order to construct a list of element definitions which should become it's
-     * children, and to specify how those child elements and attributes should be injected into the parent's target
-     * value.
+     * children, and to specify how those {@linkplain #injectChildObject(String, QName, Class) child elements} and
+     * {@linkplain #injectAttr(String, QName, Function) attributes} should be injected into the parent's target value.
      *
      * @param <ET> The type of target value which will be constructed when the injected element is parsed.
      * @param <PT> The type of elements being collected by this builder.
@@ -1701,47 +2069,200 @@ public class XMLStreamParser<@NonNull T> {
       protected final Set<PT> childParsers = new CopyOnWriteArraySet<>();
       protected final Map<String,InjectedTargetElementParser.InjectionSpec<ET,?>> injectionSpecs = new ConcurrentHashMap<>();
 
-      protected InjectedTargetElementBuilder(final Class<PT> parserType, BiConsumer<Collection<PT>,Map<String,InjectedTargetElementParser.InjectionSpec<ET,?>>> consumer) {
+      /**
+       * Construct a new <code>InjectedTargetElementBuilder</code>.
+       * 
+       * @param parserType The type of elements being collected by this builder.
+       * @param consumer The {@link Consumer} of the resulting list of child elements and injection specifications.
+       */
+      public InjectedTargetElementBuilder(final Class<PT> parserType, BiConsumer<Collection<PT>,Map<String,InjectedTargetElementParser.InjectionSpec<ET,?>>> consumer) {
         this.parserType = Objects.requireNonNull(parserType);
         this.consumer = Objects.requireNonNull(consumer);
         return;
       }
 
-      protected InjectedTargetElementBuilder<ET,PT> addAttrInjectionSpec(final String injectedFieldName, final QName attrName, final @Nullable Function<? super String,?> attrValueFunction) {
+      /**
+       * Specify that any value for <code>attrName</code> on the element currently being defined should be injected into
+       * <code>injectedFieldName</code> on the target class after having the <code>attrValueFunction</code> applied.
+       * 
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the attribute value
+       * should be populated into for injection.
+       * @param attrName The name of the {@linkplain StartElement#getAttributeByName(QName) attribute value} being
+       * injected.
+       * @param attrValueFunction A {@link Function} which should be applied to the attribute value before it is
+       * injected.
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @see #injectAttr(String, String, Function)
+       * @see #injectAttr(QName, Function)
+       * @see #injectAttr(String, Function)
+       * @see #injectAttr(String, QName)
+       * @see #injectAttr(String, String)
+       */
+      public InjectedTargetElementBuilder<ET,PT> injectAttr(final String injectedFieldName, final QName attrName, final Function<? super String,?> attrValueFunction) {
         injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.AttrInjectionSpec<>(attrName, attrValueFunction));
         return this;
       }
 
-      public InjectedTargetElementBuilder<ET,PT> injectAttr(final String injectedFieldName, final QName attrName, final Function<? super String,?> attrValueFunction) {
-        return addAttrInjectionSpec(injectedFieldName, attrName, attrValueFunction);
-      }
-
+      /**
+       * Specify that any value for <code>attrName</code> on the element currently being defined should be injected into
+       * <code>injectedFieldName</code> on the target class after having the <code>attrValueFunction</code> applied.
+       * 
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the attribute value
+       * should be populated into for injection.
+       * @param attrName The {@linkplain QName#getLocalPart() local name} of the
+       * {@linkplain StartElement#getAttributeByName(QName) attribute value} being injected
+       * ({@linkplain XMLConstants#NULL_NS_URI no namespace} will be used).
+       * @param attrValueFunction A {@link Function} which should be applied to the attribute value before it is
+       * injected.
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @see #injectAttr(String, QName, Function)
+       * @see #injectAttr(QName, Function)
+       * @see #injectAttr(String, Function)
+       * @see #injectAttr(String, QName)
+       * @see #injectAttr(String, String)
+       */
       public InjectedTargetElementBuilder<ET,PT> injectAttr(final String injectedFieldName, final String attrName, final Function<? super String,?> attrValueFunction) {
-        return addAttrInjectionSpec(injectedFieldName, new QName(XMLConstants.NULL_NS_URI, attrName), attrValueFunction);
+        injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.AttrInjectionSpec<>(new QName(XMLConstants.NULL_NS_URI, attrName), attrValueFunction));
+        return this;
       }
 
+      /**
+       * Specify that any value for <code>attrName</code> on the element currently being defined should be injected into
+       * the target class after having the <code>attrValueFunction</code> applied.
+       * 
+       * @param attrName The name of the {@linkplain StartElement#getAttributeByName(QName) attribute value} being
+       * injected.
+       * @param attrValueFunction A {@link Function} which should be applied to the attribute value before it is
+       * injected.
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @see #injectAttr(String, QName, Function)
+       * @see #injectAttr(String, String, Function)
+       * @see #injectAttr(String, Function)
+       * @see #injectAttr(String, QName)
+       * @see #injectAttr(String, String)
+       */
       public InjectedTargetElementBuilder<ET,PT> injectAttr(final QName attrName, final Function<? super String,?> attrValueFunction) {
-        return addAttrInjectionSpec(attrName.getLocalPart(), attrName, attrValueFunction);
+        injectionSpecs.put(attrName.getLocalPart(), new InjectedTargetElementParser.AttrInjectionSpec<>(attrName, attrValueFunction));
+        return this;
       }
 
+      /**
+       * Specify that any value for <code>attrName</code> on the element currently being defined should be injected into
+       * the target class after having the <code>attrValueFunction</code> applied.
+       * 
+       * @param attrName The {@linkplain QName#getLocalPart() local name} of the
+       * {@linkplain StartElement#getAttributeByName(QName) attribute value} being injected
+       * ({@linkplain XMLConstants#NULL_NS_URI no namespace} will be used).
+       * @param attrValueFunction A {@link Function} which should be applied to the attribute value before it is
+       * injected.
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @see #injectAttr(String, QName, Function)
+       * @see #injectAttr(String, String, Function)
+       * @see #injectAttr(QName, Function)
+       * @see #injectAttr(String, QName)
+       * @see #injectAttr(String, String)
+       */
       public InjectedTargetElementBuilder<ET,PT> injectAttr(final String attrName, final Function<? super String,?> attrValueFunction) {
-        return addAttrInjectionSpec(attrName, new QName(XMLConstants.NULL_NS_URI, attrName), attrValueFunction);
+        injectionSpecs.put(attrName, new InjectedTargetElementParser.AttrInjectionSpec<>(new QName(XMLConstants.NULL_NS_URI, attrName), attrValueFunction));
+        return this;
       }
 
+      /**
+       * Specify that any value for <code>attrName</code> on the element currently being defined should be injected into
+       * <code>injectedFieldName</code> on the target class.
+       * 
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the attribute value
+       * should be populated into for injection.
+       * @param attrName The name of the {@linkplain StartElement#getAttributeByName(QName) attribute value} being
+       * injected.
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @see #injectAttr(String, QName, Function)
+       * @see #injectAttr(String, String, Function)
+       * @see #injectAttr(QName, Function)
+       * @see #injectAttr(String, Function)
+       * @see #injectAttr(String, String)
+       */
       public InjectedTargetElementBuilder<ET,PT> injectAttr(final String injectedFieldName, final QName attrName) {
-        return addAttrInjectionSpec(injectedFieldName, attrName, null);
+        injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.AttrInjectionSpec<>(attrName, null));
+        return this;
       }
 
+      /**
+       * Specify that any value for <code>attrName</code> on the element currently being defined should be injected into
+       * <code>injectedFieldName</code> on the target class.
+       * 
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the attribute value
+       * should be populated into for injection.
+       * @param attrName The {@linkplain QName#getLocalPart() local name} of the
+       * {@linkplain StartElement#getAttributeByName(QName) attribute value} being injected
+       * ({@linkplain XMLConstants#NULL_NS_URI no namespace} will be used).
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @see #injectAttr(String, QName, Function)
+       * @see #injectAttr(String, String, Function)
+       * @see #injectAttr(QName, Function)
+       * @see #injectAttr(String, Function)
+       * @see #injectAttr(String, QName)
+       */
       public InjectedTargetElementBuilder<ET,PT> injectAttr(final String injectedFieldName, final String attrName) {
-        return addAttrInjectionSpec(injectedFieldName, new QName(XMLConstants.NULL_NS_URI, attrName), null);
+        injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.AttrInjectionSpec<>(new QName(XMLConstants.NULL_NS_URI, attrName), null));
+        return this;
       }
 
+      /**
+       * <p>
+       * Add the element definition referenced by <code>childElementName</code> as a child of the parent element
+       * currently being defined, and specify that it's value should be injected into <code>injectedFieldName</code> on
+       * the target class.
+       * </p>
+       * 
+       * <p>
+       * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param <CT> The type of target value which will be constructed when the child element is parsed.
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the child value should be
+       * populated into for injection.
+       * @param childElementName The name of the referenced element you wish to add as a child and have injected.
+       * @param childElementTargetValueClass The target value type produced by the referenced element definition you
+       * wish to add as a child and have injected.
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectChildObject(String, QName)
+       * @see #injectChildObject(String, String)
+       */
       public <@NonNull CT> InjectedTargetElementBuilder<ET,PT> injectChildObject(final String injectedFieldName, final QName childElementName, final Class<CT> childElementTargetValueClass) throws NoSuchElementException {
         childParsers.add(getParser(parserType, childElementName, childElementTargetValueClass));
         injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.ObjectInjectionSpec<>(childElementTargetValueClass, childElementName, false));
         return this;
       }
 
+      /**
+       * <p>
+       * Add the element definition referenced by <code>childElementName</code> as a child of the parent element
+       * currently being defined, and specify that it's value should be injected into <code>injectedFieldName</code> on
+       * the target class.
+       * </p>
+       * 
+       * <p>
+       * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the child value should be
+       * populated into for injection.
+       * @param childElementName The name of the referenced element you wish to add as a child and have injected.
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectChildObject(String, QName, Class)
+       * @see #injectChildObject(String, String)
+       */
       public InjectedTargetElementBuilder<ET,PT> injectChildObject(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
         final PT childElementParser = getParser(parserType, childElementName);
         childParsers.add(childElementParser);
@@ -1749,16 +2270,81 @@ public class XMLStreamParser<@NonNull T> {
         return this;
       }
 
+      /**
+       * <p>
+       * Add the element definition referenced by <code>childElementName</code> as a child of the parent element
+       * currently being defined, and specify that it's value should be injected into <code>injectedFieldName</code> on
+       * the target class.
+       * </p>
+       * 
+       * <p>
+       * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the child value should be
+       * populated into for injection.
+       * @param childElementName The {@linkplain QName#getLocalPart() local name} of the referenced element you wish to
+       * add as a child and have injected (the {@linkplain XMLStreamParser.SchemaBuilder#getNamespace() current
+       * namespace} will be used).
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectChildObject(String, QName, Class)
+       * @see #injectChildObject(String, QName)
+       */
       public InjectedTargetElementBuilder<ET,PT> injectChildObject(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
         return injectChildObject(injectedFieldName, qn(childElementName));
       }
 
+      /**
+       * <p>
+       * Add the element definition referenced by <code>childElementName</code> as a child of the parent element
+       * currently being defined, and specify that it's values should be injected as an {@link java.lang.reflect.Array
+       * Array} into <code>injectedFieldName</code> on the target class.
+       * </p>
+       * 
+       * <p>
+       * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param <CT> The type of target value which will be constructed when the child element is parsed.
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the child values should
+       * be populated into for injection.
+       * @param childElementName The name of the referenced element you wish to add as a child and have injected.
+       * @param childElementTargetValueClass The target value type produced by the referenced element definition you
+       * wish to add as a child and have injected.
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectChildArray(String, QName)
+       * @see #injectChildArray(String, String)
+       */
       public <@NonNull CT> InjectedTargetElementBuilder<ET,PT> injectChildArray(final String injectedFieldName, final QName childElementName, final Class<CT> childElementTargetValueClass) throws NoSuchElementException {
         childParsers.add(getParser(parserType, childElementName, childElementTargetValueClass));
         injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.ArrayInjectionSpec<>(childElementTargetValueClass, childElementName, false));
         return this;
       }
 
+      /**
+       * <p>
+       * Add the element definition referenced by <code>childElementName</code> as a child of the parent element
+       * currently being defined, and specify that it's values should be injected as an {@link java.lang.reflect.Array
+       * Array} into <code>injectedFieldName</code> on the target class.
+       * </p>
+       * 
+       * <p>
+       * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the child values should
+       * be populated into for injection.
+       * @param childElementName The name of the referenced element you wish to add as a child and have injected.
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectChildArray(String, QName, Class)
+       * @see #injectChildArray(String, String)
+       */
       public InjectedTargetElementBuilder<ET,PT> injectChildArray(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
         final PT childElementParser = getParser(parserType, childElementName);
         childParsers.add(childElementParser);
@@ -1766,16 +2352,81 @@ public class XMLStreamParser<@NonNull T> {
         return this;
       }
 
+      /**
+       * <p>
+       * Add the element definition referenced by <code>childElementName</code> as a child of the parent element
+       * currently being defined, and specify that it's values should be injected as an {@link java.lang.reflect.Array
+       * Array} into <code>injectedFieldName</code> on the target class.
+       * </p>
+       * 
+       * <p>
+       * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the child values should
+       * be populated into for injection.
+       * @param childElementName The {@linkplain QName#getLocalPart() local name} of the referenced element you wish to
+       * add as a child and have injected (the {@linkplain XMLStreamParser.SchemaBuilder#getNamespace() current
+       * namespace} will be used).
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectChildArray(String, QName, Class)
+       * @see #injectChildArray(String, QName)
+       */
       public InjectedTargetElementBuilder<ET,PT> injectChildArray(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
         return injectChildArray(injectedFieldName, qn(childElementName));
       }
 
+      /**
+       * <p>
+       * Add the element definition referenced by <code>childElementName</code> as a child of the parent element
+       * currently being defined, and specify that it's values should be injected as a {@link List} into
+       * <code>injectedFieldName</code> on the target class.
+       * </p>
+       * 
+       * <p>
+       * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param <CT> The type of target value which will be constructed when the child element is parsed.
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the child values should
+       * be populated into for injection.
+       * @param childElementName The name of the referenced element you wish to add as a child and have injected.
+       * @param childElementTargetValueClass The target value type produced by the referenced element definition you
+       * wish to add as a child and have injected.
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectChildList(String, QName)
+       * @see #injectChildList(String, String)
+       */
       public <@NonNull CT> InjectedTargetElementBuilder<ET,PT> injectChildList(final String injectedFieldName, final QName childElementName, final Class<CT> childElementTargetValueClass) throws NoSuchElementException {
         childParsers.add(getParser(parserType, childElementName, childElementTargetValueClass));
         injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.ListInjectionSpec<>(childElementTargetValueClass, childElementName, false));
         return this;
       }
 
+      /**
+       * <p>
+       * Add the element definition referenced by <code>childElementName</code> as a child of the parent element
+       * currently being defined, and specify that it's values should be injected as a {@link List} into
+       * <code>injectedFieldName</code> on the target class.
+       * </p>
+       * 
+       * <p>
+       * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the child values should
+       * be populated into for injection.
+       * @param childElementName The name of the referenced element you wish to add as a child and have injected.
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectChildList(String, QName, Class)
+       * @see #injectChildList(String, String)
+       */
       public InjectedTargetElementBuilder<ET,PT> injectChildList(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
         final PT childElementParser = getParser(parserType, childElementName);
         childParsers.add(childElementParser);
@@ -1783,16 +2434,81 @@ public class XMLStreamParser<@NonNull T> {
         return this;
       }
 
+      /**
+       * <p>
+       * Add the element definition referenced by <code>childElementName</code> as a child of the parent element
+       * currently being defined, and specify that it's values should be injected as a {@link List} into
+       * <code>injectedFieldName</code> on the target class.
+       * </p>
+       * 
+       * <p>
+       * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the child values should
+       * be populated into for injection.
+       * @param childElementName The {@linkplain QName#getLocalPart() local name} of the referenced element you wish to
+       * add as a child and have injected (the {@linkplain XMLStreamParser.SchemaBuilder#getNamespace() current
+       * namespace} will be used).
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectChildList(String, QName, Class)
+       * @see #injectChildList(String, QName)
+       */
       public InjectedTargetElementBuilder<ET,PT> injectChildList(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
         return injectChildList(injectedFieldName, qn(childElementName));
       }
 
+      /**
+       * <p>
+       * Add the element definition referenced by <code>childElementName</code> as a child of the parent element
+       * currently being defined, and specify that it's values should be injected as a {@link Set} into
+       * <code>injectedFieldName</code> on the target class.
+       * </p>
+       * 
+       * <p>
+       * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param <CT> The type of target value which will be constructed when the child element is parsed.
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the child values should
+       * be populated into for injection.
+       * @param childElementName The name of the referenced element you wish to add as a child and have injected.
+       * @param childElementTargetValueClass The target value type produced by the referenced element definition you
+       * wish to add as a child and have injected.
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectChildSet(String, QName)
+       * @see #injectChildSet(String, String)
+       */
       public <@NonNull CT> InjectedTargetElementBuilder<ET,PT> injectChildSet(final String injectedFieldName, final QName childElementName, final Class<CT> childElementTargetValueClass) throws NoSuchElementException {
         childParsers.add(getParser(parserType, childElementName, childElementTargetValueClass));
         injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.SetInjectionSpec<>(childElementTargetValueClass, childElementName, false));
         return this;
       }
 
+      /**
+       * <p>
+       * Add the element definition referenced by <code>childElementName</code> as a child of the parent element
+       * currently being defined, and specify that it's values should be injected as a {@link Set} into
+       * <code>injectedFieldName</code> on the target class.
+       * </p>
+       * 
+       * <p>
+       * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the child values should
+       * be populated into for injection.
+       * @param childElementName The name of the referenced element you wish to add as a child and have injected.
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectChildSet(String, QName, Class)
+       * @see #injectChildSet(String, String)
+       */
       public InjectedTargetElementBuilder<ET,PT> injectChildSet(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
         final PT childElementParser = getParser(parserType, childElementName);
         childParsers.add(childElementParser);
@@ -1800,67 +2516,374 @@ public class XMLStreamParser<@NonNull T> {
         return this;
       }
 
+      /**
+       * <p>
+       * Add the element definition referenced by <code>childElementName</code> as a child of the parent element
+       * currently being defined, and specify that it's values should be injected as a {@link Set} into
+       * <code>injectedFieldName</code> on the target class.
+       * </p>
+       * 
+       * <p>
+       * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the child values should
+       * be populated into for injection.
+       * @param childElementName The {@linkplain QName#getLocalPart() local name} of the referenced element you wish to
+       * add as a child and have injected (the {@linkplain XMLStreamParser.SchemaBuilder#getNamespace() current
+       * namespace} will be used).
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectChildSet(String, QName, Class)
+       * @see #injectChildSet(String, QName)
+       */
       public InjectedTargetElementBuilder<ET,PT> injectChildSet(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
         return injectChildSet(injectedFieldName, qn(childElementName));
       }
 
+      /**
+       * <p>
+       * Specify that any {@linkplain XMLStreamParser.ElementParsingContext#getSavedValueOrNull(QName, Class) saved
+       * value} for the element definition referenced by <code>savedElementName</code> should be injected into
+       * <code>injectedFieldName</code> on the target class of the element currently being defined.
+       * </p>
+       * 
+       * <p>
+       * Note that the saved element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param <ST> The type of target value which will be constructed when the saved element is parsed.
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the saved value should be
+       * populated into for injection.
+       * @param savedElementName The name of the element whose
+       * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValueOrNull(QName, Class) saved value} you wish to
+       * have injected.
+       * @param savedElementTargetClass The target value type produced by the element whose saved value you wish to have
+       * injected.
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectSavedObject(String, QName)
+       * @see #injectSavedObject(String, String)
+       */
       public <@NonNull ST> InjectedTargetElementBuilder<ET,PT> injectSavedObject(final String injectedFieldName, final QName savedElementName, final Class<ST> savedElementTargetClass) throws NoSuchElementException {
         injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.ObjectInjectionSpec<>(savedElementTargetClass, savedElementName, true));
         return this;
       }
 
+      /**
+       * <p>
+       * Specify that any {@linkplain XMLStreamParser.ElementParsingContext#getSavedValueOrNull(QName, Class) saved
+       * value} for the element definition referenced by <code>savedElementName</code> should be injected into
+       * <code>injectedFieldName</code> on the target class of the element currently being defined.
+       * </p>
+       * 
+       * <p>
+       * Note that the saved element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the saved value should be
+       * populated into for injection.
+       * @param savedElementName The name of the element whose
+       * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValueOrNull(QName, Class) saved value} you wish to
+       * have injected.
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectSavedObject(String, QName, Class)
+       * @see #injectSavedObject(String, String)
+       */
       public InjectedTargetElementBuilder<ET,PT> injectSavedObject(final String injectedFieldName, final QName savedElementName) throws NoSuchElementException {
         injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.ObjectInjectionSpec<>(getParser(savedElementName).getTargetValueClass(), savedElementName, true));
         return this;
       }
 
+      /**
+       * <p>
+       * Specify that any {@linkplain XMLStreamParser.ElementParsingContext#getSavedValueOrNull(QName, Class) saved
+       * value} for the element definition referenced by <code>savedElementName</code> should be injected into
+       * <code>injectedFieldName</code> on the target class of the element currently being defined.
+       * </p>
+       * 
+       * <p>
+       * Note that the saved element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the saved value should be
+       * populated into for injection.
+       * @param savedElementName The {@linkplain QName#getLocalPart() local name} of the element whose
+       * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValueOrNull(QName, Class) saved value} you wish to
+       * have injected (the {@linkplain XMLStreamParser.SchemaBuilder#getNamespace() current namespace} will be used).
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectSavedObject(String, QName, Class)
+       * @see #injectSavedObject(String, QName)
+       */
       public InjectedTargetElementBuilder<ET,PT> injectSavedObject(final String injectedFieldName, final String savedElementName) throws NoSuchElementException {
         return injectSavedObject(injectedFieldName, qn(savedElementName));
       }
 
+      /**
+       * <p>
+       * Specify that any {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values}
+       * for the element definition referenced by <code>savedElementName</code> should be injected as an
+       * {@link java.lang.reflect.Array Array} into <code>injectedFieldName</code> on the target class of the element
+       * currently being defined.
+       * </p>
+       * 
+       * <p>
+       * Note that the saved element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param <ST> The type of target value which will be constructed when the saved element is parsed.
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the saved values should
+       * be populated into for injection.
+       * @param savedElementName The name of the element whose
+       * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values} you wish to have
+       * injected.
+       * @param savedElementTargetClass The target value type produced by the element whose saved values you wish to
+       * have injected.
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectSavedArray(String, QName)
+       * @see #injectSavedArray(String, String)
+       */
       public <@NonNull ST> InjectedTargetElementBuilder<ET,PT> injectSavedArray(final String injectedFieldName, final QName savedElementName, final Class<ST> savedElementTargetClass) throws NoSuchElementException {
         injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.ArrayInjectionSpec<>(savedElementTargetClass, savedElementName, true));
         return this;
       }
 
+      /**
+       * <p>
+       * Specify that any {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values}
+       * for the element definition referenced by <code>savedElementName</code> should be injected as an
+       * {@link java.lang.reflect.Array Array} into <code>injectedFieldName</code> on the target class of the element
+       * currently being defined.
+       * </p>
+       * 
+       * <p>
+       * Note that the saved element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the saved values should
+       * be populated into for injection.
+       * @param savedElementName The name of the element whose
+       * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values} you wish to have
+       * injected.
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectSavedArray(String, QName, Class)
+       * @see #injectSavedArray(String, String)
+       */
       public InjectedTargetElementBuilder<ET,PT> injectSavedArray(final String injectedFieldName, final QName savedElementName) throws NoSuchElementException {
         injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.ArrayInjectionSpec<>(getParser(savedElementName).getTargetValueClass(), savedElementName, true));
         return this;
       }
 
+      /**
+       * <p>
+       * Specify that any {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values}
+       * for the element definition referenced by <code>savedElementName</code> should be injected as an
+       * {@link java.lang.reflect.Array Array} into <code>injectedFieldName</code> on the target class of the element
+       * currently being defined.
+       * </p>
+       * 
+       * <p>
+       * Note that the saved element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the saved values should
+       * be populated into for injection.
+       * @param savedElementName The {@linkplain QName#getLocalPart() local name} of the element whose
+       * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values} you wish to have
+       * injected (the {@linkplain XMLStreamParser.SchemaBuilder#getNamespace() current namespace} will be used).
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectSavedArray(String, QName, Class)
+       * @see #injectSavedArray(String, QName)
+       */
       public InjectedTargetElementBuilder<ET,PT> injectSavedArray(final String injectedFieldName, final String savedElementName) throws NoSuchElementException {
         return injectSavedArray(injectedFieldName, qn(savedElementName));
       }
 
+      /**
+       * <p>
+       * Specify that any {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values}
+       * for the element definition referenced by <code>savedElementName</code> should be injected as a {@link List}
+       * into <code>injectedFieldName</code> on the target class of the element currently being defined.
+       * </p>
+       * 
+       * <p>
+       * Note that the saved element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param <ST> The type of target value which will be constructed when the saved element is parsed.
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the saved values should
+       * be populated into for injection.
+       * @param savedElementName The name of the element whose
+       * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values} you wish to have
+       * injected.
+       * @param savedElementTargetClass The target value type produced by the element whose saved values you wish to
+       * have injected.
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectSavedList(String, QName)
+       * @see #injectSavedList(String, String)
+       */
       public <@NonNull ST> InjectedTargetElementBuilder<ET,PT> injectSavedList(final String injectedFieldName, final QName savedElementName, final Class<ST> savedElementTargetClass) throws NoSuchElementException {
         injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.ListInjectionSpec<>(savedElementTargetClass, savedElementName, true));
         return this;
       }
 
+      /**
+       * <p>
+       * Specify that any {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values}
+       * for the element definition referenced by <code>savedElementName</code> should be injected as a {@link List}
+       * into <code>injectedFieldName</code> on the target class of the element currently being defined.
+       * </p>
+       * 
+       * <p>
+       * Note that the saved element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the saved values should
+       * be populated into for injection.
+       * @param savedElementName The name of the element whose
+       * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values} you wish to have
+       * injected.
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectSavedList(String, QName, Class)
+       * @see #injectSavedList(String, String)
+       */
       public InjectedTargetElementBuilder<ET,PT> injectSavedList(final String injectedFieldName, final QName savedElementName) throws NoSuchElementException {
         injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.ListInjectionSpec<>(getParser(savedElementName).getTargetValueClass(), savedElementName, true));
         return this;
       }
 
+      /**
+       * <p>
+       * Specify that any {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values}
+       * for the element definition referenced by <code>savedElementName</code> should be injected as a {@link List}
+       * into <code>injectedFieldName</code> on the target class of the element currently being defined.
+       * </p>
+       * 
+       * <p>
+       * Note that the saved element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the saved values should
+       * be populated into for injection.
+       * @param savedElementName The {@linkplain QName#getLocalPart() local name} of the element whose
+       * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values} you wish to have
+       * injected (the {@linkplain XMLStreamParser.SchemaBuilder#getNamespace() current namespace} will be used).
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectSavedList(String, QName, Class)
+       * @see #injectSavedList(String, QName)
+       */
       public InjectedTargetElementBuilder<ET,PT> injectSavedList(final String injectedFieldName, final String savedElementName) throws NoSuchElementException {
         return injectSavedList(injectedFieldName, qn(savedElementName));
       }
 
+      /**
+       * <p>
+       * Specify that any {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values}
+       * for the element definition referenced by <code>savedElementName</code> should be injected as a {@link Set} into
+       * <code>injectedFieldName</code> on the target class of the element currently being defined.
+       * </p>
+       * 
+       * <p>
+       * Note that the saved element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param <ST> The type of target value which will be constructed when the saved element is parsed.
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the saved values should
+       * be populated into for injection.
+       * @param savedElementName The name of the element whose
+       * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values} you wish to have
+       * injected.
+       * @param savedElementTargetClass The target value type produced by the element whose saved values you wish to
+       * have injected.
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectSavedSet(String, QName)
+       * @see #injectSavedSet(String, String)
+       */
       public <@NonNull ST> InjectedTargetElementBuilder<ET,PT> injectSavedSet(final String injectedFieldName, final QName savedElementName, final Class<ST> savedElementTargetClass) throws NoSuchElementException {
         injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.SetInjectionSpec<>(savedElementTargetClass, savedElementName, true));
         return this;
       }
 
+      /**
+       * <p>
+       * Specify that any {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values}
+       * for the element definition referenced by <code>savedElementName</code> should be injected as a {@link Set} into
+       * <code>injectedFieldName</code> on the target class of the element currently being defined.
+       * </p>
+       * 
+       * <p>
+       * Note that the saved element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the saved values should
+       * be populated into for injection.
+       * @param savedElementName The name of the element whose
+       * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values} you wish to have
+       * injected.
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectSavedSet(String, QName, Class)
+       * @see #injectSavedSet(String, String)
+       */
       public InjectedTargetElementBuilder<ET,PT> injectSavedSet(final String injectedFieldName, final QName savedElementName) throws NoSuchElementException {
         injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.SetInjectionSpec<>(getParser(savedElementName).getTargetValueClass(), savedElementName, true));
         return this;
       }
 
+      /**
+       * <p>
+       * Specify that any {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values}
+       * for the element definition referenced by <code>savedElementName</code> should be injected as a {@link Set} into
+       * <code>injectedFieldName</code> on the target class of the element currently being defined.
+       * </p>
+       * 
+       * <p>
+       * Note that the saved element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the saved values should
+       * be populated into for injection.
+       * @param savedElementName The {@linkplain QName#getLocalPart() local name} of the element whose
+       * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values} you wish to have
+       * injected (the {@linkplain XMLStreamParser.SchemaBuilder#getNamespace() current namespace} will be used).
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectSavedSet(String, QName, Class)
+       * @see #injectSavedSet(String, QName)
+       */
       public InjectedTargetElementBuilder<ET,PT> injectSavedSet(final String injectedFieldName, final String savedElementName) throws NoSuchElementException {
         return injectSavedSet(injectedFieldName, qn(savedElementName));
       }
 
-      public SB completeElementDefinition() {
+      /**
+       * Compile the list of child element definitions and injection specifications which have been provided to this
+       * builder and use them to complete the definition of the parent element.
+       * 
+       * @return The {@link XMLStreamParser.SchemaBuilder SchemaBuilder} being used to define the parent element.
+       */
+      public SB completeDefinition() {
         consumer.accept(childParsers, injectionSpecs);
         return schemaBuilderType.cast(SchemaBuilder.this);
       }
