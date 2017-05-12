@@ -142,7 +142,8 @@ public class XMLStreamParser<@NonNull T> {
    * 
    * <p>
    * In addition to information about the element currently being parsed, this interface also provides access to a
-   * global store of {@linkplain #getSavedValues(QName, Class) saved element values}.
+   * global store of {@linkplain #getSavedValues(QName, Class) saved element values}, and the ability to construct
+   * values by {@linkplain #getInjectedValue(Class, Map) injecting} it's information into them.
    * </p>
    * 
    * @param <T> The {@linkplain #getTargetValueClass() target value class} of the element being parsed.
@@ -195,8 +196,8 @@ public class XMLStreamParser<@NonNull T> {
      * being parsed.
      */
     @SuppressWarnings("unchecked")
-    public default Map<String,String> getAttrs() {
-      return Collections.unmodifiableMap(StreamSupport.stream(Spliterators.spliteratorUnknownSize((Iterator<Attribute>)getStartElement().getAttributes(), Spliterator.NONNULL | Spliterator.DISTINCT | Spliterator.IMMUTABLE), false).map((attr) -> new AbstractMap.SimpleImmutableEntry<>(attr.getName().getLocalPart(), attr.getValue())).collect(Collectors.<Map.Entry<String,String>,String,String> toMap(Map.Entry::getKey, Map.Entry::getValue)));
+    public default Map<QName,String> getAttrs() {
+      return Collections.unmodifiableMap(StreamSupport.stream(Spliterators.spliteratorUnknownSize((Iterator<Attribute>)getStartElement().getAttributes(), Spliterator.NONNULL | Spliterator.DISTINCT | Spliterator.IMMUTABLE), false).map((attr) -> new AbstractMap.SimpleImmutableEntry<>(attr.getName(), attr.getValue())).collect(Collectors.<Map.Entry<QName,String>,QName,String> toMap(Map.Entry::getKey, Map.Entry::getValue)));
     }
 
     /**
@@ -611,6 +612,80 @@ public class XMLStreamParser<@NonNull T> {
      */
     public default <@NonNull CT> CT getRequiredChildValue(final @Nullable String childElementLocalName, final Class<CT> targetValueClass) throws NoSuchElementException {
       return getRequiredChildValue((childElementLocalName != null) ? new QName(getNamespaceURI(), childElementLocalName) : null, targetValueClass);
+    }
+
+    /**
+     * <p>
+     * Construct a new instance of the specified <code>targetValueClass</code> by creating a {@link Record} containing
+     * the data from the element currently being parsed and {@linkplain Record#into(Class) injecting} it into the
+     * target.
+     * </p>
+     * 
+     * <p>
+     * The {@link Record} created to perform the injection will automatically be populated with a {@link Field} for each
+     * of the {@linkplain #getAttrs() attributes} and {@linkplain #getChildValues() child values} from the element
+     * currently being parsed (using the {@linkplain QName#getLocalPart() local name} as the injected
+     * {@linkplain Field#getName() field name} for each). Child values will be injected as an
+     * {@link java.lang.reflect.Array Array} in order to provide strong typing information for use by the
+     * {@link DefaultRecordMapper}. You can provide <code>injectionSpecs</code> to override this default behaviour.
+     * </p>
+     * 
+     * @param <IT> The type of object being injected.
+     * @param targetValueClass The {@link Class} of object being injected.
+     * @param injectionSpecs This is an optional set of mappings from an injected field name to a {@link Function} for
+     * retrieving a value to be injected into that field based on the current
+     * {@link XMLStreamParser.ElementParsingContext ElementParsingContext}. These mappings can be used to either alter
+     * the default values being injected or to supplement them with additional ones.
+     * @return The injected target value.
+     * @throws ElementValueParsingException If a {@link MappingException} exception occurred while injecting the object.
+     * @see DefaultRecordMapper
+     * @see #getInjectedValue(Class)
+     */
+    public default <@NonNull IT> IT getInjectedValue(final Class<IT> targetValueClass, final @Nullable Map<String,Function<ElementParsingContext<T>,@Nullable Object>> injectionSpecs) throws ElementValueParsingException {
+      final Map<String,Field<Object>> fields = new HashMap<>();
+      final Consumer<String> defineField = (fieldName) -> fields.put(fieldName, DSL.field(DSL.name(fieldName)));
+      getAttrs().keySet().stream().map(QName::getLocalPart).forEach(defineField);
+      getChildValues().map(Map.Entry::getKey).map(Map.Entry::getKey).map(QName::getLocalPart).forEach(defineField);
+      if (injectionSpecs != null) injectionSpecs.keySet().forEach(defineField);
+
+      final Record record = DSL.using(SQLDialect.DEFAULT).newRecord(fields.values().stream().toArray(Field<?>[]::new));
+
+      getAttrs().entrySet().forEach((entry) -> record.<Object> set(Objects.requireNonNull(fields.get(entry.getKey().getLocalPart())), entry.getValue()));
+      getChildValues().forEach((entry) -> new AbstractMap.SimpleImmutableEntry<String,Object>(entry.getKey().getKey().getLocalPart(), entry.getValue().toArray((Object[])java.lang.reflect.Array.newInstance(entry.getKey().getValue(), entry.getValue().size()))));
+      if (injectionSpecs != null) injectionSpecs.entrySet().forEach((entry) -> record.<Object> set(Objects.requireNonNull(fields.get(entry.getKey())), entry.getValue().apply(this)));
+
+      try {
+        return record.into(targetValueClass);
+      } catch (MappingException me) {
+        throw new ElementValueParsingException(me, cast(this));
+      }
+    }
+
+    /**
+     * <p>
+     * Construct a new instance of the specified <code>targetValueClass</code> by creating a {@link Record} containing
+     * the data from the element currently being parsed and {@linkplain Record#into(Class) injecting} it into the
+     * target.
+     * </p>
+     * 
+     * <p>
+     * The {@link Record} created to perform the injection will automatically be populated with a {@link Field} for each
+     * of the {@linkplain #getAttrs() attributes} and {@linkplain #getChildValues() child values} from the element
+     * currently being parsed (using the {@linkplain QName#getLocalPart() local name} as the injected
+     * {@linkplain Field#getName() field name} for each). Child values will be injected as an
+     * {@link java.lang.reflect.Array Array} in order to provide strong typing information for use by the
+     * {@link DefaultRecordMapper}. You can provide <code>injectionSpecs</code> to override this default behaviour.
+     * </p>
+     * 
+     * @param <IT> The type of object being injected.
+     * @param targetValueClass The {@link Class} of object being injected.
+     * @return The injected target value.
+     * @throws ElementValueParsingException If a {@link MappingException} exception occurred while injecting the object.
+     * @see DefaultRecordMapper
+     * @see #getInjectedValue(Class, Map)
+     */
+    public default <@NonNull IT> IT getInjectedValue(final Class<IT> targetValueClass) throws ElementValueParsingException {
+      return getInjectedValue(targetValueClass, null);
     }
 
   } // ElementParsingContext
@@ -1101,129 +1176,11 @@ public class XMLStreamParser<@NonNull T> {
   } // StringElementParser
 
   protected static class InjectedTargetElementParser<@NonNull T> extends ElementParser<T> {
-    protected static final DSLContext DSL_CONTEXT = DSL.using(SQLDialect.DEFAULT);
 
-    public InjectedTargetElementParser(final Class<T> targetValueClass, final QName elementName, final boolean saveTargetValue, final @Nullable Collection<? extends ElementParser<?>> childElementParsers, final @Nullable Map<String,? extends InjectionSpec<T,?>> injectionSpecs) throws IllegalArgumentException {
-      super(targetValueClass, elementName, (ctx) -> inject(targetValueClass, ctx, injectionSpecs), saveTargetValue, childElementParsers);
+    public InjectedTargetElementParser(final Class<T> targetValueClass, final QName elementName, final boolean saveTargetValue, final @Nullable Collection<? extends ElementParser<?>> childElementParsers, final @Nullable Map<String,Function<ElementParsingContext<T>,@Nullable Object>> injectionSpecs) throws IllegalArgumentException {
+      super(targetValueClass, elementName, (ctx) -> ctx.getInjectedValue(targetValueClass, injectionSpecs), saveTargetValue, childElementParsers);
       return;
     }
-
-    protected static final <@NonNull T> T inject(final Class<? extends T> targetValueClass, final ElementParsingContext<T> ctx, final @Nullable Map<String,? extends InjectionSpec<T,?>> injectionSpecs) throws ElementValueParsingException {
-      final Map<String,Field<Object>> fields = ((injectionSpecs != null) ? Stream.concat(ctx.getAttrs().keySet().stream(), injectionSpecs.keySet().stream()) : ctx.getAttrs().keySet().stream()).distinct().map((injectedFieldName) -> new AbstractMap.SimpleImmutableEntry<>(injectedFieldName, DSL.field(DSL.name(injectedFieldName)))).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-      final Record record = DSL_CONTEXT.newRecord(fields.values().stream().toArray(Field<?>[]::new));
-      ctx.getAttrs().entrySet().stream().forEach((attr) -> record.<Object> set(Objects.requireNonNull(fields.get(attr.getKey())), attr.getValue()));
-      if (injectionSpecs != null) injectionSpecs.entrySet().stream().forEach((spec) -> record.<Object> set(Objects.requireNonNull(fields.get(spec.getKey())), spec.getValue().apply(ctx)));
-      try {
-        return record.into(targetValueClass);
-      } catch (MappingException me) {
-        throw new ElementValueParsingException(me, cast(ctx));
-      }
-    }
-
-    protected static abstract class InjectionSpec<@NonNull ET,@NonNull ST> implements Function<ElementParsingContext<ET>,@Nullable Object> {
-      protected final Class<ST> sourceTargetValueClass;
-      protected final @Nullable QName sourceName;
-      protected final boolean fromSavedValues;
-
-      protected InjectionSpec(final Class<ST> sourceTargetValueClass, final @Nullable QName sourceName, final boolean fromSavedValues) {
-        this.sourceTargetValueClass = Objects.requireNonNull(sourceTargetValueClass);
-        this.sourceName = Objects.requireNonNull(sourceName);
-        this.fromSavedValues = fromSavedValues;
-        return;
-      }
-
-    } // InjectedTargetElementParser.InjectionSpec
-
-    protected static abstract class SingleValuedInjectionSpec<@NonNull ET,@NonNull ST> extends InjectionSpec<ET,ST> {
-
-      protected SingleValuedInjectionSpec(final Class<ST> sourceTargetValueClass, final @Nullable QName sourceName, final boolean fromSavedValues) {
-        super(sourceTargetValueClass, sourceName, fromSavedValues);
-        return;
-      }
-
-    } // InjectedTargetElementParser.SingleValuedInjectionSpec
-
-    protected static class ObjectInjectionSpec<@NonNull ET,@NonNull ST> extends SingleValuedInjectionSpec<ET,ST> {
-
-      protected ObjectInjectionSpec(final Class<ST> sourceTargetValueClass, final @Nullable QName sourceName, final boolean fromSavedValues) {
-        super(sourceTargetValueClass, sourceName, fromSavedValues);
-        return;
-      }
-
-      @Override
-      public @Nullable Object apply(final ElementParsingContext<ET> ctx) {
-        return fromSavedValues ? ctx.getSavedValueOrNull(sourceName, sourceTargetValueClass) : ctx.getChildValueOrNull(sourceName, sourceTargetValueClass);
-      }
-
-    } // InjectedTargetElementParser.ObjectInjectionSpec
-
-    protected static class AttrInjectionSpec<@NonNull ET> extends SingleValuedInjectionSpec<ET,String> {
-      protected final Function<? super String,?> attrValueFunction;
-
-      protected AttrInjectionSpec(final QName attrName, final @Nullable Function<? super String,?> attrValueFunction) {
-        super(String.class, attrName, false);
-        this.attrValueFunction = (attrValueFunction != null) ? attrValueFunction : Function.identity();
-        return;
-      }
-
-      @Override
-      public @Nullable Object apply(final ElementParsingContext<ET> ctx) {
-        final @Nullable String attr = ctx.getAttrOrNull(Objects.requireNonNull(sourceName));
-        return (attr != null) ? attrValueFunction.apply(attr) : null;
-      }
-
-    } // InjectedTargetElementParser.AttrInjectionSpec
-
-    protected static abstract class MultiValuedInjectionSpec<@NonNull ET,@NonNull ST> extends InjectionSpec<ET,ST> {
-
-      protected MultiValuedInjectionSpec(final Class<ST> sourceTargetValueClass, final @Nullable QName sourceName, final boolean fromSavedValues) {
-        super(sourceTargetValueClass, sourceName, fromSavedValues);
-        return;
-      }
-
-    } // InjectedTargetElementParser.MultiValuedInjectionSpec
-
-    protected static class ArrayInjectionSpec<@NonNull ET,@NonNull ST> extends MultiValuedInjectionSpec<ET,ST> {
-
-      protected ArrayInjectionSpec(final Class<ST> sourceTargetValueClass, final @Nullable QName sourceName, final boolean fromSavedValues) {
-        super(sourceTargetValueClass, sourceName, fromSavedValues);
-        return;
-      }
-
-      @Override
-      public @Nullable Object apply(final ElementParsingContext<ET> ctx) {
-        return (fromSavedValues ? ctx.getSavedValues(sourceName, sourceTargetValueClass) : ctx.getChildValues(sourceName, sourceTargetValueClass)).toArray((n) -> (Object[])java.lang.reflect.Array.newInstance(sourceTargetValueClass, n));
-      }
-
-    } // InjectedTargetElementParser.ArrayInjectionSpec
-
-    protected static class ListInjectionSpec<@NonNull ET,@NonNull ST> extends MultiValuedInjectionSpec<ET,ST> {
-
-      protected ListInjectionSpec(final Class<ST> sourceTargetValueClass, final @Nullable QName sourceName, final boolean fromSavedValues) {
-        super(sourceTargetValueClass, sourceName, fromSavedValues);
-        return;
-      }
-
-      @Override
-      public @Nullable Object apply(final ElementParsingContext<ET> ctx) {
-        return (fromSavedValues ? ctx.getSavedValues(sourceName, sourceTargetValueClass) : ctx.getChildValues(sourceName, sourceTargetValueClass)).collect(Collectors.toList());
-      }
-
-    } // InjectedTargetElementParser.ListInjectionSpec
-
-    protected static class SetInjectionSpec<@NonNull ET,@NonNull ST> extends MultiValuedInjectionSpec<ET,ST> {
-
-      protected SetInjectionSpec(final Class<ST> sourceTargetValueClass, final @Nullable QName sourceName, final boolean fromSavedValues) {
-        super(sourceTargetValueClass, sourceName, fromSavedValues);
-        return;
-      }
-
-      @Override
-      public @Nullable Object apply(final ElementParsingContext<ET> ctx) {
-        return (fromSavedValues ? ctx.getSavedValues(sourceName, sourceTargetValueClass) : ctx.getChildValues(sourceName, sourceTargetValueClass)).collect(Collectors.toSet());
-      }
-
-    } // InjectedTargetElementParser.SetInjectionSpec
 
   } // InjectedTargetElementParser
 
@@ -1665,9 +1622,9 @@ public class XMLStreamParser<@NonNull T> {
 
     /**
      * <p>
-     * Define a content element which automatically constructs it's target value by creating a {@link Record} from the
-     * parsed data and then {@linkplain Record#into(Class) injecting} it into the specified
-     * <code>targetValueClass</code>.
+     * Define a content element which automatically constructs it's target value by
+     * {@linkplain XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map) injecting} it's parsed data into
+     * the specified <code>targetValueClass</code>.
      * </p>
      * 
      * <p>
@@ -1684,7 +1641,7 @@ public class XMLStreamParser<@NonNull T> {
      * @param targetValueClass The {@link Class} object for the type of target value which will be constructed when the
      * defined element is parsed.
      * @return The {@link XMLStreamParser.SchemaBuilder SchemaBuilder} this method was invoked on.
-     * @see DefaultRecordMapper
+     * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
      * @see #defineElementWithInjectedTarget(Class)
      * @see #defineElementWithInjectedTargetBuilder(String, Class, boolean)
      * @see #defineElement(String, Class, Function)
@@ -1695,9 +1652,9 @@ public class XMLStreamParser<@NonNull T> {
 
     /**
      * <p>
-     * Define a content element which automatically constructs it's target value by creating a {@link Record} from the
-     * parsed data and then {@linkplain Record#into(Class) injecting} it into the specified
-     * <code>targetValueClass</code>.
+     * Define a content element which automatically constructs it's target value by
+     * {@linkplain XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map) injecting} it's parsed data into
+     * the specified <code>targetValueClass</code>.
      * </p>
      * 
      * <p>
@@ -1714,7 +1671,7 @@ public class XMLStreamParser<@NonNull T> {
      * as the {@linkplain QName#getLocalPart() local name} of the element being defined (the {@linkplain #getNamespace()
      * current namespace} will be used).
      * @return The {@link XMLStreamParser.SchemaBuilder SchemaBuilder} this method was invoked on.
-     * @see DefaultRecordMapper
+     * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
      * @see #defineElementWithInjectedTarget(String, Class)
      * @see #defineElementWithInjectedTargetBuilder(String, Class, boolean)
      * @see #defineElement(String, Class, Function)
@@ -1725,9 +1682,9 @@ public class XMLStreamParser<@NonNull T> {
 
     /**
      * <p>
-     * Define a content element which automatically constructs it's target value by creating a {@link Record} from the
-     * parsed data and then {@linkplain Record#into(Class) injecting} it into the specified
-     * <code>targetValueClass</code>.
+     * Define a content element which automatically constructs it's target value by
+     * {@linkplain XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map) injecting} it's parsed data into
+     * the specified <code>targetValueClass</code>.
      * </p>
      * 
      * <p>
@@ -1750,7 +1707,7 @@ public class XMLStreamParser<@NonNull T> {
      * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder} which
      * you can use to reference other existing element definitions this one will have as children and specify how those
      * should be injected into the <code>targetValueClass</code>.
-     * @see DefaultRecordMapper
+     * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
      * @see #defineElementWithInjectedTargetBuilder(String, Class)
      * @see #defineElementWithInjectedTargetBuilder(Class)
      * @see #defineElementWithInjectedTarget(String, Class)
@@ -1762,9 +1719,9 @@ public class XMLStreamParser<@NonNull T> {
 
     /**
      * <p>
-     * Define a content element which automatically constructs it's target value by creating a {@link Record} from the
-     * parsed data and then {@linkplain Record#into(Class) injecting} it into the specified
-     * <code>targetValueClass</code>.
+     * Define a content element which automatically constructs it's target value by
+     * {@linkplain XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map) injecting} it's parsed data into
+     * the specified <code>targetValueClass</code>.
      * </p>
      * 
      * <p>
@@ -1784,7 +1741,7 @@ public class XMLStreamParser<@NonNull T> {
      * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder} which
      * you can use to reference other existing element definitions this one will have as children and specify how those
      * should be injected into the <code>targetValueClass</code>.
-     * @see DefaultRecordMapper
+     * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
      * @see #defineElementWithInjectedTargetBuilder(String, Class, boolean)
      * @see #defineElementWithInjectedTargetBuilder(Class)
      * @see #defineElementWithInjectedTarget(String, Class)
@@ -1796,9 +1753,9 @@ public class XMLStreamParser<@NonNull T> {
 
     /**
      * <p>
-     * Define a content element which automatically constructs it's target value by creating a {@link Record} from the
-     * parsed data and then {@linkplain Record#into(Class) injecting} it into the specified
-     * <code>targetValueClass</code>.
+     * Define a content element which automatically constructs it's target value by
+     * {@linkplain XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map) injecting} it's parsed data into
+     * the specified <code>targetValueClass</code>.
      * </p>
      * 
      * <p>
@@ -1818,7 +1775,7 @@ public class XMLStreamParser<@NonNull T> {
      * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder} which
      * you can use to reference other existing element definitions this one will have as children and specify how those
      * should be injected into the <code>targetValueClass</code>.
-     * @see DefaultRecordMapper
+     * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
      * @see #defineElementWithInjectedTargetBuilder(String, Class, boolean)
      * @see #defineElementWithInjectedTargetBuilder(String, Class)
      * @see #defineElementWithInjectedTarget(String, Class)
@@ -2057,17 +2014,17 @@ public class XMLStreamParser<@NonNull T> {
      * This class is used during the
      * {@linkplain XMLStreamParser.SchemaBuilder#defineElementWithInjectedTargetBuilder(String, Class, boolean)
      * definition of an injected element} in order to construct a list of element definitions which should become it's
-     * children, and to specify how those {@linkplain #injectChildObject(String, QName, Class) child elements} and
-     * {@linkplain #injectAttr(String, QName, Function) attributes} should be injected into the parent's target value.
+     * children and to create <code>injectionSpecs</code> customizing how the
+     * {@linkplain XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map) injection} should be performed.
      *
      * @param <ET> The type of target value which will be constructed when the injected element is parsed.
      * @param <PT> The type of elements being collected by this builder.
      */
     public final class InjectedTargetElementBuilder<@NonNull ET,@NonNull PT extends ElementParser<?>> {
       protected final Class<PT> parserType;
-      protected final BiConsumer<Collection<PT>,Map<String,InjectedTargetElementParser.InjectionSpec<ET,?>>> consumer;
+      protected final BiConsumer<Collection<PT>,Map<String,Function<ElementParsingContext<ET>,@Nullable Object>>> consumer;
       protected final Set<PT> childParsers = new CopyOnWriteArraySet<>();
-      protected final Map<String,InjectedTargetElementParser.InjectionSpec<ET,?>> injectionSpecs = new ConcurrentHashMap<>();
+      protected final Map<String,Function<ElementParsingContext<ET>,@Nullable Object>> injectionSpecs = new ConcurrentHashMap<>();
 
       /**
        * Construct a new <code>InjectedTargetElementBuilder</code>.
@@ -2075,7 +2032,7 @@ public class XMLStreamParser<@NonNull T> {
        * @param parserType The type of elements being collected by this builder.
        * @param consumer The {@link Consumer} of the resulting list of child elements and injection specifications.
        */
-      public InjectedTargetElementBuilder(final Class<PT> parserType, BiConsumer<Collection<PT>,Map<String,InjectedTargetElementParser.InjectionSpec<ET,?>>> consumer) {
+      public InjectedTargetElementBuilder(final Class<PT> parserType, BiConsumer<Collection<PT>,Map<String,Function<ElementParsingContext<ET>,@Nullable Object>>> consumer) {
         this.parserType = Objects.requireNonNull(parserType);
         this.consumer = Objects.requireNonNull(consumer);
         return;
@@ -2098,9 +2055,13 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectAttr(String, Function)
        * @see #injectAttr(String, QName)
        * @see #injectAttr(String, String)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public InjectedTargetElementBuilder<ET,PT> injectAttr(final String injectedFieldName, final QName attrName, final Function<? super String,?> attrValueFunction) {
-        injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.AttrInjectionSpec<>(attrName, attrValueFunction));
+        injectionSpecs.put(injectedFieldName, (ctx) -> {
+          final @Nullable String attrValue = ctx.getAttrOrNull(attrName);
+          return (attrValue != null) ? attrValueFunction.apply(attrValue) : null;
+        });
         return this;
       }
 
@@ -2122,10 +2083,10 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectAttr(String, Function)
        * @see #injectAttr(String, QName)
        * @see #injectAttr(String, String)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public InjectedTargetElementBuilder<ET,PT> injectAttr(final String injectedFieldName, final String attrName, final Function<? super String,?> attrValueFunction) {
-        injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.AttrInjectionSpec<>(new QName(XMLConstants.NULL_NS_URI, attrName), attrValueFunction));
-        return this;
+        return injectAttr(injectedFieldName, new QName(XMLConstants.NULL_NS_URI, attrName), attrValueFunction);
       }
 
       /**
@@ -2143,10 +2104,10 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectAttr(String, Function)
        * @see #injectAttr(String, QName)
        * @see #injectAttr(String, String)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public InjectedTargetElementBuilder<ET,PT> injectAttr(final QName attrName, final Function<? super String,?> attrValueFunction) {
-        injectionSpecs.put(attrName.getLocalPart(), new InjectedTargetElementParser.AttrInjectionSpec<>(attrName, attrValueFunction));
-        return this;
+        return injectAttr(attrName.getLocalPart(), attrName, attrValueFunction);
       }
 
       /**
@@ -2165,10 +2126,10 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectAttr(QName, Function)
        * @see #injectAttr(String, QName)
        * @see #injectAttr(String, String)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public InjectedTargetElementBuilder<ET,PT> injectAttr(final String attrName, final Function<? super String,?> attrValueFunction) {
-        injectionSpecs.put(attrName, new InjectedTargetElementParser.AttrInjectionSpec<>(new QName(XMLConstants.NULL_NS_URI, attrName), attrValueFunction));
-        return this;
+        return injectAttr(attrName, new QName(XMLConstants.NULL_NS_URI, attrName), attrValueFunction);
       }
 
       /**
@@ -2186,9 +2147,10 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectAttr(QName, Function)
        * @see #injectAttr(String, Function)
        * @see #injectAttr(String, String)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public InjectedTargetElementBuilder<ET,PT> injectAttr(final String injectedFieldName, final QName attrName) {
-        injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.AttrInjectionSpec<>(attrName, null));
+        injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getAttrOrNull(attrName));
         return this;
       }
 
@@ -2208,10 +2170,10 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectAttr(QName, Function)
        * @see #injectAttr(String, Function)
        * @see #injectAttr(String, QName)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public InjectedTargetElementBuilder<ET,PT> injectAttr(final String injectedFieldName, final String attrName) {
-        injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.AttrInjectionSpec<>(new QName(XMLConstants.NULL_NS_URI, attrName), null));
-        return this;
+        return injectAttr(injectedFieldName, new QName(XMLConstants.NULL_NS_URI, attrName));
       }
 
       /**
@@ -2236,10 +2198,11 @@ public class XMLStreamParser<@NonNull T> {
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectChildObject(String, QName)
        * @see #injectChildObject(String, String)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public <@NonNull CT> InjectedTargetElementBuilder<ET,PT> injectChildObject(final String injectedFieldName, final QName childElementName, final Class<CT> childElementTargetValueClass) throws NoSuchElementException {
         childParsers.add(getParser(parserType, childElementName, childElementTargetValueClass));
-        injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.ObjectInjectionSpec<>(childElementTargetValueClass, childElementName, false));
+        injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValueOrNull(childElementName, childElementTargetValueClass));
         return this;
       }
 
@@ -2262,11 +2225,12 @@ public class XMLStreamParser<@NonNull T> {
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectChildObject(String, QName, Class)
        * @see #injectChildObject(String, String)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public InjectedTargetElementBuilder<ET,PT> injectChildObject(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
         final PT childElementParser = getParser(parserType, childElementName);
         childParsers.add(childElementParser);
-        injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.ObjectInjectionSpec<>(childElementParser.getTargetValueClass(), childElementName, false));
+        injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValueOrNull(childElementName, childElementParser.getTargetValueClass()));
         return this;
       }
 
@@ -2291,6 +2255,7 @@ public class XMLStreamParser<@NonNull T> {
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectChildObject(String, QName, Class)
        * @see #injectChildObject(String, QName)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public InjectedTargetElementBuilder<ET,PT> injectChildObject(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
         return injectChildObject(injectedFieldName, qn(childElementName));
@@ -2318,10 +2283,11 @@ public class XMLStreamParser<@NonNull T> {
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectChildArray(String, QName)
        * @see #injectChildArray(String, String)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public <@NonNull CT> InjectedTargetElementBuilder<ET,PT> injectChildArray(final String injectedFieldName, final QName childElementName, final Class<CT> childElementTargetValueClass) throws NoSuchElementException {
         childParsers.add(getParser(parserType, childElementName, childElementTargetValueClass));
-        injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.ArrayInjectionSpec<>(childElementTargetValueClass, childElementName, false));
+        injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValues(childElementName, childElementTargetValueClass).toArray((n) -> (Object[])java.lang.reflect.Array.newInstance(childElementTargetValueClass, n)));
         return this;
       }
 
@@ -2344,11 +2310,12 @@ public class XMLStreamParser<@NonNull T> {
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectChildArray(String, QName, Class)
        * @see #injectChildArray(String, String)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public InjectedTargetElementBuilder<ET,PT> injectChildArray(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
         final PT childElementParser = getParser(parserType, childElementName);
         childParsers.add(childElementParser);
-        injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.ArrayInjectionSpec<>(childElementParser.getTargetValueClass(), childElementName, false));
+        injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValues(childElementName, childElementParser.getTargetValueClass()).toArray((n) -> (Object[])java.lang.reflect.Array.newInstance(childElementParser.getTargetValueClass(), n)));
         return this;
       }
 
@@ -2373,6 +2340,7 @@ public class XMLStreamParser<@NonNull T> {
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectChildArray(String, QName, Class)
        * @see #injectChildArray(String, QName)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public InjectedTargetElementBuilder<ET,PT> injectChildArray(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
         return injectChildArray(injectedFieldName, qn(childElementName));
@@ -2400,10 +2368,11 @@ public class XMLStreamParser<@NonNull T> {
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectChildList(String, QName)
        * @see #injectChildList(String, String)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public <@NonNull CT> InjectedTargetElementBuilder<ET,PT> injectChildList(final String injectedFieldName, final QName childElementName, final Class<CT> childElementTargetValueClass) throws NoSuchElementException {
         childParsers.add(getParser(parserType, childElementName, childElementTargetValueClass));
-        injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.ListInjectionSpec<>(childElementTargetValueClass, childElementName, false));
+        injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValues(childElementName, childElementTargetValueClass).collect(Collectors.toList()));
         return this;
       }
 
@@ -2426,11 +2395,12 @@ public class XMLStreamParser<@NonNull T> {
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectChildList(String, QName, Class)
        * @see #injectChildList(String, String)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public InjectedTargetElementBuilder<ET,PT> injectChildList(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
         final PT childElementParser = getParser(parserType, childElementName);
         childParsers.add(childElementParser);
-        injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.ListInjectionSpec<>(childElementParser.getTargetValueClass(), childElementName, false));
+        injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValues(childElementName, childElementParser.getTargetValueClass()).collect(Collectors.toList()));
         return this;
       }
 
@@ -2455,6 +2425,7 @@ public class XMLStreamParser<@NonNull T> {
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectChildList(String, QName, Class)
        * @see #injectChildList(String, QName)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public InjectedTargetElementBuilder<ET,PT> injectChildList(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
         return injectChildList(injectedFieldName, qn(childElementName));
@@ -2482,10 +2453,11 @@ public class XMLStreamParser<@NonNull T> {
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectChildSet(String, QName)
        * @see #injectChildSet(String, String)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public <@NonNull CT> InjectedTargetElementBuilder<ET,PT> injectChildSet(final String injectedFieldName, final QName childElementName, final Class<CT> childElementTargetValueClass) throws NoSuchElementException {
         childParsers.add(getParser(parserType, childElementName, childElementTargetValueClass));
-        injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.SetInjectionSpec<>(childElementTargetValueClass, childElementName, false));
+        injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValues(childElementName, childElementTargetValueClass).collect(Collectors.toSet()));
         return this;
       }
 
@@ -2508,11 +2480,12 @@ public class XMLStreamParser<@NonNull T> {
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectChildSet(String, QName, Class)
        * @see #injectChildSet(String, String)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public InjectedTargetElementBuilder<ET,PT> injectChildSet(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
         final PT childElementParser = getParser(parserType, childElementName);
         childParsers.add(childElementParser);
-        injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.SetInjectionSpec<>(childElementParser.getTargetValueClass(), childElementName, false));
+        injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValues(childElementName, childElementParser.getTargetValueClass()).collect(Collectors.toSet()));
         return this;
       }
 
@@ -2537,6 +2510,7 @@ public class XMLStreamParser<@NonNull T> {
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectChildSet(String, QName, Class)
        * @see #injectChildSet(String, QName)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public InjectedTargetElementBuilder<ET,PT> injectChildSet(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
         return injectChildSet(injectedFieldName, qn(childElementName));
@@ -2559,16 +2533,17 @@ public class XMLStreamParser<@NonNull T> {
        * @param savedElementName The name of the element whose
        * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValueOrNull(QName, Class) saved value} you wish to
        * have injected.
-       * @param savedElementTargetClass The target value type produced by the element whose saved value you wish to have
-       * injected.
+       * @param savedElementTargetValueClass The target value type produced by the element whose saved value you wish to
+       * have injected.
        * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
        * this method was invoked on.
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectSavedObject(String, QName)
        * @see #injectSavedObject(String, String)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public <@NonNull ST> InjectedTargetElementBuilder<ET,PT> injectSavedObject(final String injectedFieldName, final QName savedElementName, final Class<ST> savedElementTargetClass) throws NoSuchElementException {
-        injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.ObjectInjectionSpec<>(savedElementTargetClass, savedElementName, true));
+      public <@NonNull ST> InjectedTargetElementBuilder<ET,PT> injectSavedObject(final String injectedFieldName, final QName savedElementName, final Class<ST> savedElementTargetValueClass) throws NoSuchElementException {
+        injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getSavedValueOrNull(savedElementName, savedElementTargetValueClass));
         return this;
       }
 
@@ -2593,9 +2568,10 @@ public class XMLStreamParser<@NonNull T> {
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectSavedObject(String, QName, Class)
        * @see #injectSavedObject(String, String)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public InjectedTargetElementBuilder<ET,PT> injectSavedObject(final String injectedFieldName, final QName savedElementName) throws NoSuchElementException {
-        injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.ObjectInjectionSpec<>(getParser(savedElementName).getTargetValueClass(), savedElementName, true));
+        injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getSavedValueOrNull(savedElementName, getParser(savedElementName).getTargetValueClass()));
         return this;
       }
 
@@ -2620,6 +2596,7 @@ public class XMLStreamParser<@NonNull T> {
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectSavedObject(String, QName, Class)
        * @see #injectSavedObject(String, QName)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public InjectedTargetElementBuilder<ET,PT> injectSavedObject(final String injectedFieldName, final String savedElementName) throws NoSuchElementException {
         return injectSavedObject(injectedFieldName, qn(savedElementName));
@@ -2643,16 +2620,17 @@ public class XMLStreamParser<@NonNull T> {
        * @param savedElementName The name of the element whose
        * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values} you wish to have
        * injected.
-       * @param savedElementTargetClass The target value type produced by the element whose saved values you wish to
-       * have injected.
+       * @param savedElementTargetValueClass The target value type produced by the element whose saved values you wish
+       * to have injected.
        * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
        * this method was invoked on.
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectSavedArray(String, QName)
        * @see #injectSavedArray(String, String)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public <@NonNull ST> InjectedTargetElementBuilder<ET,PT> injectSavedArray(final String injectedFieldName, final QName savedElementName, final Class<ST> savedElementTargetClass) throws NoSuchElementException {
-        injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.ArrayInjectionSpec<>(savedElementTargetClass, savedElementName, true));
+      public <@NonNull ST> InjectedTargetElementBuilder<ET,PT> injectSavedArray(final String injectedFieldName, final QName savedElementName, final Class<ST> savedElementTargetValueClass) throws NoSuchElementException {
+        injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getSavedValues(savedElementName, savedElementTargetValueClass).toArray((n) -> (Object[])java.lang.reflect.Array.newInstance(savedElementTargetValueClass, n)));
         return this;
       }
 
@@ -2678,9 +2656,11 @@ public class XMLStreamParser<@NonNull T> {
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectSavedArray(String, QName, Class)
        * @see #injectSavedArray(String, String)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public InjectedTargetElementBuilder<ET,PT> injectSavedArray(final String injectedFieldName, final QName savedElementName) throws NoSuchElementException {
-        injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.ArrayInjectionSpec<>(getParser(savedElementName).getTargetValueClass(), savedElementName, true));
+        final PT savedElementParser = getParser(parserType, savedElementName);
+        injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getSavedValues(savedElementName, savedElementParser.getTargetValueClass()).toArray((n) -> (Object[])java.lang.reflect.Array.newInstance(savedElementParser.getTargetValueClass(), n)));
         return this;
       }
 
@@ -2706,6 +2686,7 @@ public class XMLStreamParser<@NonNull T> {
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectSavedArray(String, QName, Class)
        * @see #injectSavedArray(String, QName)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public InjectedTargetElementBuilder<ET,PT> injectSavedArray(final String injectedFieldName, final String savedElementName) throws NoSuchElementException {
         return injectSavedArray(injectedFieldName, qn(savedElementName));
@@ -2728,16 +2709,17 @@ public class XMLStreamParser<@NonNull T> {
        * @param savedElementName The name of the element whose
        * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values} you wish to have
        * injected.
-       * @param savedElementTargetClass The target value type produced by the element whose saved values you wish to
-       * have injected.
+       * @param savedElementTargetValueClass The target value type produced by the element whose saved values you wish
+       * to have injected.
        * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
        * this method was invoked on.
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectSavedList(String, QName)
        * @see #injectSavedList(String, String)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public <@NonNull ST> InjectedTargetElementBuilder<ET,PT> injectSavedList(final String injectedFieldName, final QName savedElementName, final Class<ST> savedElementTargetClass) throws NoSuchElementException {
-        injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.ListInjectionSpec<>(savedElementTargetClass, savedElementName, true));
+      public <@NonNull ST> InjectedTargetElementBuilder<ET,PT> injectSavedList(final String injectedFieldName, final QName savedElementName, final Class<ST> savedElementTargetValueClass) throws NoSuchElementException {
+        injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValues(savedElementName, savedElementTargetValueClass).collect(Collectors.toList()));
         return this;
       }
 
@@ -2762,9 +2744,10 @@ public class XMLStreamParser<@NonNull T> {
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectSavedList(String, QName, Class)
        * @see #injectSavedList(String, String)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public InjectedTargetElementBuilder<ET,PT> injectSavedList(final String injectedFieldName, final QName savedElementName) throws NoSuchElementException {
-        injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.ListInjectionSpec<>(getParser(savedElementName).getTargetValueClass(), savedElementName, true));
+        injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValues(savedElementName, getParser(savedElementName).getTargetValueClass()).collect(Collectors.toList()));
         return this;
       }
 
@@ -2789,6 +2772,7 @@ public class XMLStreamParser<@NonNull T> {
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectSavedList(String, QName, Class)
        * @see #injectSavedList(String, QName)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public InjectedTargetElementBuilder<ET,PT> injectSavedList(final String injectedFieldName, final String savedElementName) throws NoSuchElementException {
         return injectSavedList(injectedFieldName, qn(savedElementName));
@@ -2811,16 +2795,17 @@ public class XMLStreamParser<@NonNull T> {
        * @param savedElementName The name of the element whose
        * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values} you wish to have
        * injected.
-       * @param savedElementTargetClass The target value type produced by the element whose saved values you wish to
-       * have injected.
+       * @param savedElementTargetValueClass The target value type produced by the element whose saved values you wish
+       * to have injected.
        * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
        * this method was invoked on.
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectSavedSet(String, QName)
        * @see #injectSavedSet(String, String)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public <@NonNull ST> InjectedTargetElementBuilder<ET,PT> injectSavedSet(final String injectedFieldName, final QName savedElementName, final Class<ST> savedElementTargetClass) throws NoSuchElementException {
-        injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.SetInjectionSpec<>(savedElementTargetClass, savedElementName, true));
+      public <@NonNull ST> InjectedTargetElementBuilder<ET,PT> injectSavedSet(final String injectedFieldName, final QName savedElementName, final Class<ST> savedElementTargetValueClass) throws NoSuchElementException {
+        injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValues(savedElementName, savedElementTargetValueClass).collect(Collectors.toSet()));
         return this;
       }
 
@@ -2845,9 +2830,10 @@ public class XMLStreamParser<@NonNull T> {
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectSavedSet(String, QName, Class)
        * @see #injectSavedSet(String, String)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public InjectedTargetElementBuilder<ET,PT> injectSavedSet(final String injectedFieldName, final QName savedElementName) throws NoSuchElementException {
-        injectionSpecs.put(injectedFieldName, new InjectedTargetElementParser.SetInjectionSpec<>(getParser(savedElementName).getTargetValueClass(), savedElementName, true));
+        injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValues(savedElementName, getParser(savedElementName).getTargetValueClass()).collect(Collectors.toSet()));
         return this;
       }
 
@@ -2872,6 +2858,7 @@ public class XMLStreamParser<@NonNull T> {
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectSavedSet(String, QName, Class)
        * @see #injectSavedSet(String, QName)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public InjectedTargetElementBuilder<ET,PT> injectSavedSet(final String injectedFieldName, final String savedElementName) throws NoSuchElementException {
         return injectSavedSet(injectedFieldName, qn(savedElementName));
