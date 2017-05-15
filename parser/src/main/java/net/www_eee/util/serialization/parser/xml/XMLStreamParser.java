@@ -2222,6 +2222,7 @@ public class XMLStreamParser<@NonNull T> {
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectChildObject(String, QName)
        * @see #injectChildObject(String, String)
+       * @see #injectChildObject(String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public <@NonNull CT,@NonNull IT> InjectedTargetElementBuilder<ET,PT> injectChildObject(final String injectedFieldName, final QName childElementName, final Class<CT> childElementTargetValueClass, final Class<IT> injectedValueClass, final Function<? super CT,? extends IT> injectedValueFunction) throws NoSuchElementException {
@@ -2252,6 +2253,7 @@ public class XMLStreamParser<@NonNull T> {
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectChildObject(String, QName, Class, Class, Function)
        * @see #injectChildObject(String, String)
+       * @see #injectChildObject(String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public InjectedTargetElementBuilder<ET,PT> injectChildObject(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
@@ -2282,10 +2284,37 @@ public class XMLStreamParser<@NonNull T> {
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
        * @see #injectChildObject(String, QName, Class, Class, Function)
        * @see #injectChildObject(String, QName)
+       * @see #injectChildObject(String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
       public InjectedTargetElementBuilder<ET,PT> injectChildObject(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
         return injectChildObject(injectedFieldName, qn(childElementName));
+      }
+
+      /**
+       * <p>
+       * Add the element definition referenced by <code>childElementName</code> as a child of the parent element
+       * currently being defined, and specify that it's value should be injected into a field of the same name on
+       * the target class.
+       * </p>
+       * 
+       * <p>
+       * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * @param childElementName The {@linkplain QName#getLocalPart() local name} of the referenced element you wish to
+       * add as a child and have injected (the {@linkplain XMLStreamParser.SchemaBuilder#getNamespace() current
+       * namespace} will be used).
+       * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
+       * this method was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #injectChildObject(String, QName, Class, Class, Function)
+       * @see #injectChildObject(String, QName)
+       * @see #injectChildObject(String, String)
+       * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
+       */
+      public InjectedTargetElementBuilder<ET,PT> injectChildObject( final String childElementName) throws NoSuchElementException {
+        return injectChildObject(childElementName, qn(childElementName));
       }
 
       /**
