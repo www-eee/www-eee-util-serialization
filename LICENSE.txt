@@ -1,3 +1,14 @@
+                "Lesser" AFFERO GENERAL PUBLIC LICENSE
+
+  This license supplements version 3 of the GNU Affero General Public License,
+included below, with the following "additional permissions" (as per section 7):
+
+  If you modify this Program, or any covered work, by linking or
+combining it with other code, such other code is not for that reason
+alone subject to any of the requirements of the GNU Affero GPL
+version 3.
+
+
                     GNU AFFERO GENERAL PUBLIC LICENSE
                        Version 3, 19 November 2007
 

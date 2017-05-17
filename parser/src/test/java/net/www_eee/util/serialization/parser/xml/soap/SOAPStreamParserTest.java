@@ -1,8 +1,9 @@
 /*
  * Copyright 2016-2017 by Chris Hubick. All Rights Reserved.
  * 
- * This work is licensed under the terms of the "GNU LESSER GENERAL PUBLIC LICENSE" version 3, as published by the Free
- * Software Foundation <http://www.gnu.org/licenses/>, a copy of which you should have received in the file LICENSE.txt.
+ * This work is licensed under the terms of the "GNU AFFERO GENERAL PUBLIC LICENSE" version 3, as published by the Free
+ * Software Foundation <http://www.gnu.org/licenses/>, plus additional permissions, a copy of which you should have
+ * received in the file LICENSE.txt.
  */
 
 package net.www_eee.util.serialization.parser.xml.soap;

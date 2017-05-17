@@ -1,8 +1,9 @@
 /*
  * Copyright 2016-2017 by Chris Hubick. All Rights Reserved.
  * 
- * This work is licensed under the terms of the "GNU LESSER GENERAL PUBLIC LICENSE" version 3, as published by the Free
- * Software Foundation <http://www.gnu.org/licenses/>, a copy of which you should have received in the file LICENSE.txt.
+ * This work is licensed under the terms of the "GNU AFFERO GENERAL PUBLIC LICENSE" version 3, as published by the Free
+ * Software Foundation <http://www.gnu.org/licenses/>, plus additional permissions, a copy of which you should have
+ * received in the file LICENSE.txt.
  */
 
 package net.www_eee.util.serialization.parser.xml;
@@ -2294,8 +2295,8 @@ public class XMLStreamParser<@NonNull T> {
       /**
        * <p>
        * Add the element definition referenced by <code>childElementName</code> as a child of the parent element
-       * currently being defined, and specify that it's value should be injected into a field of the same name on
-       * the target class.
+       * currently being defined, and specify that it's value should be injected into a field of the same name on the
+       * target class.
        * </p>
        * 
        * <p>
@@ -2313,7 +2314,7 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectChildObject(String, String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public InjectedTargetElementBuilder<ET,PT> injectChildObject( final String childElementName) throws NoSuchElementException {
+      public InjectedTargetElementBuilder<ET,PT> injectChildObject(final String childElementName) throws NoSuchElementException {
         return injectChildObject(childElementName, qn(childElementName));
       }
 
