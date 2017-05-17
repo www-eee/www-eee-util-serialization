@@ -204,7 +204,7 @@ public interface Introspectable extends XMLSerializable {
           } else if (child.getKey().equals(valueNameFunction.apply(child.getValue()))) {
             propElementRequired = false; // We'll never nest two elements with the same name (common path when prop is a single complex child wrapped in a collection).
           } else {
-            propElementRequired = children.values().stream().filter((someChild) -> someChild != child.getValue()).filter((otherChild) -> !otherChild.getValueTypeExtensions()).filter((otherChild) -> valueNameFunction.apply(otherChild).equals(valueNameFunction.apply(child.getValue()))).findAny().isPresent(); // Will the value name for this prop collide with that of any other prop?
+            propElementRequired = filter(entrySet().stream(), Child.WILDCARD_CLASS).<Info.Child<?,?>> map(Map.Entry::getValue).filter((someChild) -> someChild != child.getValue()).filter((otherChild) -> !otherChild.getValueTypeExtensions()).filter((otherChild) -> valueNameFunction.apply(otherChild).equals(valueNameFunction.apply(child.getValue()))).findAny().isPresent(); // Will the value name for this prop collide with that of any other prop?
           }
 
           if (propElementRequired) streamWriter.writeStartElement(XMLConstants.DEFAULT_NS_PREFIX, child.getKey(), nsString);
