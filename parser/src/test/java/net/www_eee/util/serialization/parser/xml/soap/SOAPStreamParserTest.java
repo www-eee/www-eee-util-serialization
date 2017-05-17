@@ -41,7 +41,7 @@ public class SOAPStreamParserTest {
     schema.defineElementWithInjectedTargetBuilder("departure", Departure.class).injectChildObject("Departing", "departing").injectChildObject("DepartureMonthDay", "departureMonthDay").injectSavedObject("DepartureYear", "departureYear").completeDefinition();
     // schema.defineElementWithChildBuilder("departure", Departure.class, (ctx) -> new Departure(ctx.getRequiredChildValue("departing", String.class), ctx.getRequiredChildValue("departureMonthDay", MonthDay.class).atYear(ctx.getRequiredSavedValue("departureYear", Year.class).getValue())), false).addChild("departing").addChild("departureMonthDay").completeDefinition();
     schema.defineContainerElementWithChildBuilder("departures").addChild("departure").addChild(SOAPStreamParser.FAULT_QNAME).completeDefinition().defineBodyElement("departures");
-    DEPARTURE_STREAM_PARSER = schema.defineEnvelopeElement(true).createParser(Departure.class, "departure");
+    DEPARTURE_STREAM_PARSER = schema.defineEnvelopeElement(true).createSOAPParser(Departure.class, "departure");
   }
 
   /**

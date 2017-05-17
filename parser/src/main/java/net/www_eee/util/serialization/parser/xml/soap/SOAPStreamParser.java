@@ -10,6 +10,7 @@ package net.www_eee.util.serialization.parser.xml.soap;
 
 import java.net.*;
 import java.util.*;
+import java.util.stream.*;
 
 import javax.xml.namespace.*;
 import javax.xml.soap.*;
@@ -82,14 +83,15 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
     throw new SOAPFaultException(fault);
   }, false, CODE_ELEMENT, REASON_ELEMENT);
 
-  protected SOAPStreamParser(final Class<T> targetValueClass, final EnvelopeElementParser envelopeParser, final ElementParser<T> targetParser) {
-    super(targetValueClass, envelopeParser, targetParser);
+  @SafeVarargs
+  protected SOAPStreamParser(final Class<T> targetValueClass, final EnvelopeElementParser envelopeParser, final @NonNull ElementParser<? extends T>... targetParsers) {
+    super(targetValueClass, envelopeParser, targetParsers);
     //TODO return; // https://bugs.openjdk.java.net/browse/JDK-8036775
   }
 
   /**
    * Create a SOAP {@link SchemaBuilder SchemaBuilder} which can then be used to define the elements used within the XML
-   * documents you wish to {@link SchemaBuilder#createParser(Class, QName) create a parser} for.
+   * documents you wish to {@link SchemaBuilder#createSOAPParser(Class, QName[]) create a parser} for.
    * 
    * @param namespace The (optional) namespace used by your XML.
    * @return A new {@link SchemaBuilder}.
@@ -110,8 +112,8 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
 
   protected static class BodyElementParser extends ContainerElementParser {
 
-    public BodyElementParser(final ElementParser<?> childElementParser) {
-      super(BODY_QNAME, FAULT_ELEMENT, childElementParser);
+    public BodyElementParser(final @NonNull ElementParser<?> @Nullable... childElementParsers) {
+      super(BODY_QNAME, ((childElementParsers != null) ? Stream.concat(Stream.of(FAULT_ELEMENT), Stream.of(childElementParsers)) : Stream.of(FAULT_ELEMENT)).toArray((n) -> new ElementParser<?>[n]));
       return;
     }
 
@@ -134,7 +136,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
   /**
    * An extension of the regular {@link net.www_eee.util.serialization.parser.xml.XMLStreamParser.SchemaBuilder
    * SchemaBuilder} class, adding in additional support for the definition of SOAP
-   * {@link #defineHeaderElementWithChildBuilder() Header}, {@link #defineBodyElement(QName, Class) Body}, and
+   * {@link #defineHeaderElementWithChildBuilder() Header}, {@link #defineBodyElement(Class, QName) Body}, and
    * {@link #defineEnvelopeElement(boolean) Envelope} elements.
    * 
    * @param <SB> The concrete class of schema builder being used.
@@ -170,14 +172,14 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
      * container}).
      * 
      * @param <CT> The type of target value which will be constructed when the child element is parsed.
-     * @param childElementName The name of an existing element you wish to add as a child of this one.
      * @param childElementTargetValueClass The target value type produced by the element you wish to add as a child of
      * this one.
+     * @param childElementName The name of an existing element you wish to add as a child of this one.
      * @return The {@link SOAPStreamParser.SchemaBuilder SchemaBuilder} this method was invoked on.
      * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
      */
-    public final <@NonNull CT> SB defineBodyElement(final QName childElementName, final Class<CT> childElementTargetValueClass) throws NoSuchElementException {
-      return addParser(new BodyElementParser(getParser(childElementName, childElementTargetValueClass)));
+    public final <@NonNull CT> SB defineBodyElement(final Class<CT> childElementTargetValueClass, final QName childElementName) throws NoSuchElementException {
+      return addParser(new BodyElementParser(getParserWithTargetType(childElementTargetValueClass, childElementName)));
     }
 
     /**
@@ -206,6 +208,17 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
     }
 
     /**
+     * Define a <code>Body</code> element (a specialized {@linkplain #defineContainerElementWithChildBuilder(String)
+     * container}).
+     * 
+     * @return A {@link net.www_eee.util.serialization.parser.xml.XMLStreamParser.SchemaBuilder.ChildElementListBuilder
+     * ChildElementListBuilder} which you can use to define which elements the <code>Body</code> will have as children.
+     */
+    public final ChildElementListBuilder<@NonNull ?> defineBodyElementWithChildBuilder() {
+      return new ChildElementListBuilder<ElementParser<?>>(ElementParser.WILDCARD_CLASS, (childParsers) -> addParser(new BodyElementParser(childParsers)));
+    }
+
+    /**
      * Define an <code>Envelope</code> element (a specialized
      * {@linkplain #defineContainerElementWithChildBuilder(String) container}).
      * 
@@ -215,12 +228,12 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
      * @throws NoSuchElementException If the referenced <code>Header</code> element hasn't been defined in this schema.
      */
     public final SB defineEnvelopeElement(final boolean hasHeader) throws NoSuchElementException {
-      return addParser(hasHeader ? new EnvelopeElementParser(getParser(HeaderElementParser.class, HEADER_QNAME), getParser(BodyElementParser.class, BODY_QNAME)) : new EnvelopeElementParser(getParser(BodyElementParser.class, BODY_QNAME)));
+      return addParser(hasHeader ? new EnvelopeElementParser(getParserOfParserType(HeaderElementParser.class, HEADER_QNAME), getParserOfParserType(BodyElementParser.class, BODY_QNAME)) : new EnvelopeElementParser(getParserOfParserType(BodyElementParser.class, BODY_QNAME)));
     }
 
     @Override
-    public <@NonNull T> SOAPStreamParser<T> createParser(final Class<T> targetValueClass, final QName documentElementName, final QName targetElementName) throws NoSuchElementException {
-      return new SOAPStreamParser<T>(targetValueClass, getParser(EnvelopeElementParser.class, documentElementName), getParser(targetElementName, targetValueClass));
+    public <@NonNull T> SOAPStreamParser<T> createXMLParser(final Class<T> targetValueClass, final QName documentElementName, final @NonNull QName... targetElementNames) throws NoSuchElementException {
+      return new SOAPStreamParser<T>(targetValueClass, getParserOfParserType(EnvelopeElementParser.class, documentElementName), getParsersWithTargetType(targetValueClass, targetElementNames));
     }
 
     /**
@@ -229,14 +242,14 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
      * @param <T> The type of target values to be streamed by the created parser.
      * @param targetValueClass The {@link Class} object for the type of
      * {@linkplain XMLStreamParser#getTargetValueClass() target value} which will be streamed by the created parser.
-     * @param targetElementName The name of the primary content element whose target values will be streamed by the
+     * @param targetElementNames The name of the primary content elements whose target values will be streamed by the
      * created parser.
      * @return The newly created {@link SOAPStreamParser} instance.
      * @throws NoSuchElementException If a referenced element hasn't been defined in this schema.
-     * @see #createParser(Class, String)
+     * @see #createSOAPParser(Class, String[])
      */
-    public <@NonNull T> SOAPStreamParser<T> createParser(final Class<T> targetValueClass, final QName targetElementName) throws NoSuchElementException {
-      return new SOAPStreamParser<T>(targetValueClass, getParser(EnvelopeElementParser.class, ENVELOPE_QNAME), getParser(targetElementName, targetValueClass));
+    public <@NonNull T> SOAPStreamParser<T> createSOAPParser(final Class<T> targetValueClass, final @NonNull QName... targetElementNames) throws NoSuchElementException {
+      return new SOAPStreamParser<T>(targetValueClass, getParserOfParserType(EnvelopeElementParser.class, ENVELOPE_QNAME), getParsersWithTargetType(targetValueClass, targetElementNames));
     }
 
     /**
@@ -245,15 +258,15 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
      * @param <T> The type of target values to be streamed by the created parser.
      * @param targetValueClass The {@link Class} object for the type of
      * {@linkplain XMLStreamParser#getTargetValueClass() target value} which will be streamed by the created parser.
-     * @param targetElementLocalName The {@linkplain QName#getLocalPart() local name} of the primary content element
+     * @param targetElementLocalNames The {@linkplain QName#getLocalPart() local name} of the primary content elements
      * whose target values will be streamed by the created parser (the {@linkplain #getNamespace() current namespace}
      * will be used).
      * @return The newly created {@link SOAPStreamParser} instance.
      * @throws NoSuchElementException If a referenced element hasn't been defined in this schema.
-     * @see #createParser(Class, String)
+     * @see #createSOAPParser(Class, String[])
      */
-    public <@NonNull T> SOAPStreamParser<T> createParser(final Class<T> targetValueClass, final String targetElementLocalName) throws NoSuchElementException {
-      return createParser(targetValueClass, qn(targetElementLocalName));
+    public <@NonNull T> SOAPStreamParser<T> createSOAPParser(final Class<T> targetValueClass, final @NonNull String... targetElementLocalNames) throws NoSuchElementException {
+      return createSOAPParser(targetValueClass, qns(targetElementLocalNames));
     }
 
   } // SchemaBuilder
