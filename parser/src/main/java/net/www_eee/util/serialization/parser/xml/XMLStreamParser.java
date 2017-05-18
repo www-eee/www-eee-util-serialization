@@ -1820,7 +1820,7 @@ public class XMLStreamParser<@NonNull T> {
      * {@linkplain #getNamespace() current namespace} will be used).
      * @param targetValueClass The {@link Class} object for the type of target value which will be constructed when the
      * defined element is parsed.
-     * @param wrappedElementNames The name of an existing element which will be the child element wrapped by this one.
+     * @param wrappedElementNames The names of existing elements which will be the child elements wrapped by this one.
      * @return The {@link XMLStreamParser.SchemaBuilder SchemaBuilder} this method was invoked on.
      * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
      */
@@ -1837,12 +1837,12 @@ public class XMLStreamParser<@NonNull T> {
      * {@linkplain #getNamespace() current namespace} will be used).
      * @param targetValueClass The {@link Class} object for the type of target value which will be constructed when the
      * defined element is parsed.
-     * @param wrappedElementName The name of an existing element which will be the child element wrapped by this one.
+     * @param wrappedElementNames The names of existing elements which will be the child elements wrapped by this one.
      * @return The {@link XMLStreamParser.SchemaBuilder SchemaBuilder} this method was invoked on.
      * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
      */
-    public final <@NonNull ET> SB defineWrapperElement(final String wrapperElementLocalName, final Class<ET> targetValueClass, final String wrappedElementName) throws NoSuchElementException {
-      return defineWrapperElement(wrapperElementLocalName, targetValueClass, qn(wrappedElementName));
+    public final <@NonNull ET> SB defineWrapperElement(final String wrapperElementLocalName, final Class<ET> targetValueClass, final @NonNull String @Nullable... wrappedElementNames) throws NoSuchElementException {
+      return defineWrapperElement(wrapperElementLocalName, targetValueClass, qns(wrappedElementNames));
     }
 
     /**
