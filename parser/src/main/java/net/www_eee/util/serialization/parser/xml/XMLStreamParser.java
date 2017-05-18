@@ -38,13 +38,13 @@ import org.jooq.impl.*;
 public class XMLStreamParser<@NonNull T> {
   private static final XMLInputFactory XML_INPUT_FACTORY = XMLInputFactory.newInstance();
   protected final Class<T> targetValueClass;
-  private final ElementParser<?> documentParser;
+  private final Set<? extends ElementParser<?>> documentParsers;
   private final Set<? extends ElementParser<? extends T>> targetParsers;
 
   @SafeVarargs
-  protected XMLStreamParser(final Class<T> targetValueClass, final ElementParser<?> documentParser, final @NonNull ElementParser<? extends T>... targetParsers) {
+  protected XMLStreamParser(final Class<T> targetValueClass, final Set<? extends ElementParser<?>> documentParsers, final @NonNull ElementParser<? extends T>... targetParsers) {
     this.targetValueClass = Objects.requireNonNull(targetValueClass, "null targetValueClass");
-    this.documentParser = Objects.requireNonNull(documentParser, "null documentParser");
+    this.documentParsers = Collections.unmodifiableSet(new CopyOnWriteArraySet<>(Objects.requireNonNull(documentParsers, "null documentParsers")));
     this.targetParsers = Collections.unmodifiableSet(new CopyOnWriteArraySet<>(Arrays.asList(Objects.requireNonNull(targetParsers, "null targetParsers"))));
     return;
   }
@@ -71,7 +71,10 @@ public class XMLStreamParser<@NonNull T> {
 
       ElementParser<?>.ParsingContextImpl targetParentContext = null;
       try {
-        documentParser.parse(null, reader.nextTag(), reader, targetParsers); // Read in events up until an element using the targetParser is encountered.
+        final XMLEvent documentEvent = reader.nextTag();
+        final Optional<? extends ElementParser<?>> documentParser = documentParsers.stream().filter((parser) -> parser.isParserFor(documentEvent)).findFirst();
+        if (!documentParser.isPresent()) return Stream.empty();
+        documentParser.get().parse(null, documentEvent, reader, targetParsers); // Read in events up until an element using the targetParser is encountered.
       } catch (TerminatingParserException tpe) {
         targetParentContext = tpe.getParsingContextImpl();
       }
@@ -116,7 +119,7 @@ public class XMLStreamParser<@NonNull T> {
 
   /**
    * Create a {@link SchemaBuilder SchemaBuilder} which can then be used to define the elements used within the XML
-   * documents you wish to {@link SchemaBuilder#createXMLParser(Class, QName, QName[]) create a parser} for.
+   * documents you wish to {@link SchemaBuilder#createXMLParser(Class, Set, QName[]) create a parser} for.
    * 
    * @param namespace The (optional) namespace used by your XML.
    * @return A new {@link SchemaBuilder}.
@@ -844,7 +847,13 @@ public class XMLStreamParser<@NonNull T> {
    */
   public static class ElementValueParsingException extends ElementParsingContextException {
 
-    protected ElementValueParsingException(final Exception cause, final ElementParser<?>.ParsingContextImpl context) {
+    /**
+     * Construct a new <code>ElementValueParsingException</code>.
+     * 
+     * @param cause The cause of this exception.
+     * @param context The context this exception occurred in.
+     */
+    public ElementValueParsingException(final Exception cause, final ElementParser<?>.ParsingContextImpl context) {
       super(cause.getClass().getName() + " parsing '" + context.getStartElement().getName().getLocalPart() + "' element: " + cause.getMessage(), Objects.requireNonNull(cause, "null cause"), context);
       return;
     }
@@ -948,17 +957,18 @@ public class XMLStreamParser<@NonNull T> {
     protected final boolean saveTargetValue;
     private final Set<? extends ContentParser<?,?>> childParsers;
 
-    public ElementParser(final Class<T> targetValueClass, final QName elementName, final Function<ElementParsingContext<T>,T> targetValueFunction, final boolean saveTargetValue, final @Nullable Collection<? extends ContentParser<?,?>> childParsers) {
+    public ElementParser(final Class<T> targetValueClass, final QName elementName, final Function<ElementParsingContext<T>,T> targetValueFunction, final boolean saveTargetValue, final @Nullable Collection<? extends ContentParser<?,?>> defaultChildParsers, final @Nullable Collection<? extends ContentParser<?,?>> childParsers) {
       super(StartElement.class, targetValueClass);
       this.elementName = elementName;
       this.targetValueFunction = targetValueFunction;
       this.saveTargetValue = saveTargetValue;
-      this.childParsers = (childParsers != null) ? Collections.unmodifiableSet(new CopyOnWriteArraySet<>(childParsers)) : Collections.emptySet();
+      final CopyOnWriteArraySet<? extends ContentParser<?,?>> cps = Stream.concat((childParsers != null) ? childParsers.stream() : Stream.empty(), (defaultChildParsers != null) ? defaultChildParsers.stream() : Stream.empty()).collect(Collectors.toCollection(CopyOnWriteArraySet::new));
+      this.childParsers = !cps.isEmpty() ? Collections.unmodifiableSet(cps) : Collections.emptySet();
       return;
     }
 
-    public ElementParser(final Class<T> targetValueClass, final QName elementName, final Function<ElementParsingContext<T>,T> targetValueFunction, final boolean saveTargetValue, final @NonNull ContentParser<?,?> @Nullable... childParsers) {
-      this(targetValueClass, elementName, targetValueFunction, saveTargetValue, (childParsers != null) ? Arrays.asList(childParsers) : null);
+    public ElementParser(final Class<T> targetValueClass, final QName elementName, final Function<ElementParsingContext<T>,T> targetValueFunction, final boolean saveTargetValue, final @Nullable Collection<? extends ContentParser<?,?>> defaultChildParsers, final @NonNull ContentParser<?,?> @Nullable... childParsers) {
+      this(targetValueClass, elementName, targetValueFunction, saveTargetValue, defaultChildParsers, (childParsers != null) ? Arrays.asList(childParsers) : null);
       return;
     }
 
@@ -1144,8 +1154,8 @@ public class XMLStreamParser<@NonNull T> {
 
   protected static class ContainerElementParser extends ElementParser<StartElement> {
 
-    public ContainerElementParser(final QName elementName, final @NonNull ElementParser<?> @Nullable... childElementParsers) {
-      super(StartElement.class, elementName, (context) -> context.getStartElement(), false, childElementParsers);
+    public ContainerElementParser(final QName elementName, final @Nullable Collection<? extends ContentParser<?,?>> defaultChildParsers, final @NonNull ElementParser<?> @Nullable... childElementParsers) {
+      super(StartElement.class, elementName, (context) -> context.getStartElement(), false, defaultChildParsers, childElementParsers);
       return;
     }
 
@@ -1154,13 +1164,13 @@ public class XMLStreamParser<@NonNull T> {
   protected static class WrapperElementParser<@NonNull T> extends ElementParser<T> {
 
     @SafeVarargs
-    public WrapperElementParser(final Class<T> targetValueClass, final QName elementName, final @NonNull ElementParser<? extends T> @Nullable... wrappedElementParsers) {
-      super(targetValueClass, elementName, (ctx) -> ctx.getRequiredChildValue((QName)null, targetValueClass), false, wrappedElementParsers);
+    public WrapperElementParser(final Class<T> targetValueClass, final QName elementName, final @Nullable Collection<? extends ContentParser<?,?>> defaultChildParsers, final @NonNull ElementParser<? extends T> @Nullable... wrappedElementParsers) {
+      super(targetValueClass, elementName, (ctx) -> ctx.getRequiredChildValue((QName)null, targetValueClass), false, defaultChildParsers, wrappedElementParsers);
       return;
     }
 
-    public WrapperElementParser(final QName elementName, final ElementParser<T> wrappedElementParser) {
-      this(wrappedElementParser.getTargetValueClass(), elementName, wrappedElementParser);
+    public WrapperElementParser(final QName elementName, final @Nullable Collection<? extends ContentParser<?,?>> defaultChildParsers, final ElementParser<T> wrappedElementParser) {
+      this(wrappedElementParser.getTargetValueClass(), elementName, defaultChildParsers, wrappedElementParser);
       return;
     }
 
@@ -1170,7 +1180,7 @@ public class XMLStreamParser<@NonNull T> {
     private static final CharactersParser CHARACTERS_PARSER = new CharactersParser(true, true, false);
 
     public SimpleElementParser(final Class<T> targetValueClass, final QName elementName, final BiFunction<ElementParsingContext<T>,? super String,? extends T> targetValueFunction, final boolean saveTargetValue) {
-      super(targetValueClass, elementName, (ctx) -> targetValueFunction.apply(ctx, cast(ctx).getChildValues(CHARACTERS_PARSER).collect(Collectors.joining())), saveTargetValue, CHARACTERS_PARSER);
+      super(targetValueClass, elementName, (ctx) -> targetValueFunction.apply(ctx, cast(ctx).getChildValues(CHARACTERS_PARSER).collect(Collectors.joining())), saveTargetValue, null, CHARACTERS_PARSER);
       return;
     }
 
@@ -1192,8 +1202,8 @@ public class XMLStreamParser<@NonNull T> {
 
   protected static class InjectedTargetElementParser<@NonNull T> extends ElementParser<T> {
 
-    public InjectedTargetElementParser(final Class<T> targetValueClass, final Class<? extends T> targetImplClass, final QName elementName, final boolean saveTargetValue, final @Nullable Collection<? extends ElementParser<?>> childElementParsers, final @Nullable Map<String,Function<ElementParsingContext<T>,@Nullable Object>> injectionSpecs) throws IllegalArgumentException {
-      super(targetValueClass, elementName, (ctx) -> ctx.getInjectedValue(targetImplClass, injectionSpecs), saveTargetValue, childElementParsers);
+    public InjectedTargetElementParser(final Class<T> targetValueClass, final Class<? extends T> targetImplClass, final QName elementName, final boolean saveTargetValue, final @Nullable Collection<? extends ContentParser<?,?>> defaultChildParsers, final @Nullable Collection<? extends ElementParser<?>> childElementParsers, final @Nullable Map<String,Function<ElementParsingContext<T>,@Nullable Object>> injectionSpecs) throws IllegalArgumentException {
+      super(targetValueClass, elementName, (ctx) -> ctx.getInjectedValue(targetImplClass, injectionSpecs), saveTargetValue, defaultChildParsers, childElementParsers);
       return;
     }
 
@@ -1202,7 +1212,7 @@ public class XMLStreamParser<@NonNull T> {
   /**
    * <p>
    * This class allows you to define the elements used within your XML documents and then
-   * {@linkplain #createXMLParser(Class, QName, QName[]) create a parser} for them.
+   * {@linkplain #createXMLParser(Class, Set, QName[]) create a parser} for them.
    * </p>
    * 
    * <p>
@@ -1253,6 +1263,10 @@ public class XMLStreamParser<@NonNull T> {
       final Set<ElementParser<?>> copy = (elementParsers != null) ? new CopyOnWriteArraySet<>(elementParsers) : new CopyOnWriteArraySet<>();
       this.elementParsers = (unmodifiable) ? Collections.unmodifiableSet(copy) : copy;
       return;
+    }
+
+    protected @Nullable Collection<? extends ContentParser<?,?>> getDefaultChildParsers(final QName elementName, final Class<?> targetValueClass) {
+      return null;
     }
 
     protected SB forkImpl(final @Nullable URI namespace, final boolean unmodifiable) {
@@ -1599,7 +1613,8 @@ public class XMLStreamParser<@NonNull T> {
      * @see #defineSimpleElement(String, Class, BiFunction, boolean)
      */
     public final <@NonNull ET> SB defineElement(final String elementLocalName, final Class<ET> targetValueClass, final Function<ElementParsingContext<ET>,ET> targetValueFunction) {
-      return addParser(new ElementParser<ET>(targetValueClass, qn(elementLocalName), targetValueFunction, false));
+      final QName elementName = qn(elementLocalName);
+      return addParser(new ElementParser<ET>(targetValueClass, elementName, targetValueFunction, false, getDefaultChildParsers(elementName, targetValueClass)));
     }
 
     /**
@@ -1637,7 +1652,8 @@ public class XMLStreamParser<@NonNull T> {
      * @see #defineSimpleElement(String, Class, BiFunction, boolean)
      */
     public final <@NonNull ET> ChildElementListBuilder<@NonNull ?> defineElementWithChildBuilder(final String elementLocalName, final Class<ET> targetValueClass, final Function<ElementParsingContext<ET>,ET> targetValueFunction, final boolean saveTargetValue) {
-      return new ChildElementListBuilder<ElementParser<?>>(ElementParser.WILDCARD_CLASS, (childParsers) -> addParser(new ElementParser<ET>(targetValueClass, qn(elementLocalName), targetValueFunction, saveTargetValue, childParsers)));
+      final QName elementName = qn(elementLocalName);
+      return new ChildElementListBuilder<ElementParser<?>>(ElementParser.WILDCARD_CLASS, (childParsers) -> addParser(new ElementParser<ET>(targetValueClass, elementName, targetValueFunction, saveTargetValue, getDefaultChildParsers(elementName, targetValueClass), childParsers)));
     }
 
     /**
@@ -1670,7 +1686,8 @@ public class XMLStreamParser<@NonNull T> {
      * @see #defineElement(String, Class, Function)
      */
     public final <@NonNull ET> SB defineElementWithInjectedTarget(final String injectedElementLocalName, final Class<ET> targetValueClass, final Class<? extends ET> targetImplClass) {
-      return addParser(new InjectedTargetElementParser<ET>(targetValueClass, targetImplClass, qn(injectedElementLocalName), false, null, null));
+      final QName injectedElementName = qn(injectedElementLocalName);
+      return addParser(new InjectedTargetElementParser<ET>(targetValueClass, targetImplClass, injectedElementName, false, getDefaultChildParsers(injectedElementName, targetValueClass), null, null));
     }
 
     /**
@@ -1740,7 +1757,8 @@ public class XMLStreamParser<@NonNull T> {
      * @see #defineElementWithChildBuilder(String, Class, Function, boolean)
      */
     public final <@NonNull ET> InjectedTargetElementBuilder<ET,?> defineElementWithInjectedTargetBuilder(final String injectedElementLocalName, final Class<ET> targetValueClass, final Class<? extends ET> targetImplClass, final boolean saveTargetValue) {
-      return new InjectedTargetElementBuilder<>(ElementParser.WILDCARD_CLASS, (childParsers, injectionSpecs) -> addParser(new InjectedTargetElementParser<ET>(targetValueClass, targetImplClass, qn(injectedElementLocalName), saveTargetValue, childParsers, injectionSpecs)));
+      final QName injectedElementName = qn(injectedElementLocalName);
+      return new InjectedTargetElementBuilder<>(ElementParser.WILDCARD_CLASS, (childParsers, injectionSpecs) -> addParser(new InjectedTargetElementParser<ET>(targetValueClass, targetImplClass, injectedElementName, saveTargetValue, getDefaultChildParsers(injectedElementName, targetValueClass), childParsers, injectionSpecs)));
     }
 
     /**
@@ -1825,7 +1843,8 @@ public class XMLStreamParser<@NonNull T> {
      * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
      */
     public final <@NonNull ET> SB defineWrapperElement(final String wrapperElementLocalName, final Class<ET> targetValueClass, final @NonNull QName @Nullable... wrappedElementNames) throws NoSuchElementException {
-      return addParser(new WrapperElementParser<ET>(targetValueClass, qn(wrapperElementLocalName), getParsersWithTargetType(targetValueClass, wrappedElementNames)));
+      final QName wrapperElementName = qn(wrapperElementLocalName);
+      return addParser(new WrapperElementParser<ET>(targetValueClass, wrapperElementName, getDefaultChildParsers(wrapperElementName, targetValueClass), getParsersWithTargetType(targetValueClass, wrappedElementNames)));
     }
 
     /**
@@ -1855,7 +1874,8 @@ public class XMLStreamParser<@NonNull T> {
      * to define which elements this definition will have as children.
      */
     public final ChildElementListBuilder<@NonNull ?> defineContainerElementWithChildBuilder(final String containerElementLocalName) {
-      return new ChildElementListBuilder<ElementParser<?>>(ElementParser.WILDCARD_CLASS, (childParsers) -> addParser(new ContainerElementParser(qn(containerElementLocalName), childParsers)));
+      final QName containerElementName = qn(containerElementLocalName);
+      return new ChildElementListBuilder<ElementParser<?>>(ElementParser.WILDCARD_CLASS, (childParsers) -> addParser(new ContainerElementParser(containerElementName, getDefaultChildParsers(containerElementName, ElementParser.WILDCARD_CLASS), childParsers)));
     }
 
     /**
@@ -1864,15 +1884,15 @@ public class XMLStreamParser<@NonNull T> {
      * @param <T> The type of target values to be streamed by the created parser.
      * @param targetValueClass The {@link Class} object for the type of
      * {@linkplain XMLStreamParser#getTargetValueClass() target value} which will be streamed by the created parser.
-     * @param documentElementName The name of the root document element which will be consumed by the created parser.
+     * @param documentElementNames The names of the root document elements which will be consumed by the created parser.
      * @param targetElementNames The name of the primary content elements whose target values will be streamed by the
      * created parser.
      * @return The newly created {@link XMLStreamParser} instance.
      * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
      * @see #createXMLParser(Class, String, String[])
      */
-    public <@NonNull T> XMLStreamParser<T> createXMLParser(final Class<T> targetValueClass, final QName documentElementName, final @NonNull QName... targetElementNames) throws NoSuchElementException {
-      return new XMLStreamParser<T>(targetValueClass, getParser(documentElementName), getParsersWithTargetType(targetValueClass, targetElementNames));
+    public <@NonNull T> XMLStreamParser<T> createXMLParser(final Class<T> targetValueClass, final Set<QName> documentElementNames, final @NonNull QName... targetElementNames) throws NoSuchElementException {
+      return new XMLStreamParser<T>(targetValueClass, documentElementNames.stream().map((documentElementName) -> getParser(documentElementName)).collect(Collectors.toSet()), getParsersWithTargetType(targetValueClass, targetElementNames));
     }
 
     /**
@@ -1888,10 +1908,10 @@ public class XMLStreamParser<@NonNull T> {
      * will be used).
      * @return The newly created {@link XMLStreamParser} instance.
      * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
-     * @see #createXMLParser(Class, QName, QName[])
+     * @see #createXMLParser(Class, Set, QName[])
      */
     public <@NonNull T> XMLStreamParser<T> createXMLParser(final Class<T> targetValueClass, final String documentElementLocalName, final @NonNull String... targetElementLocalNames) throws NoSuchElementException {
-      return createXMLParser(targetValueClass, qn(documentElementLocalName), qns(targetElementLocalNames));
+      return createXMLParser(targetValueClass, Collections.singleton(qn(documentElementLocalName)), qns(targetElementLocalNames));
     }
 
     /**

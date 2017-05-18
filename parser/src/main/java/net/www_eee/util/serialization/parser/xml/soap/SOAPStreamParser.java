@@ -70,22 +70,22 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
     }
   }
   protected static final SimpleElementParser<QName> VALUE_ELEMENT = new SimpleElementParser<>(QName.class, VALUE_QNAME, (s) -> new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, s.substring(s.indexOf(':') + 1), s.substring(0, s.indexOf(':'))), false);
-  private static final WrapperElementParser<QName> CODE_ELEMENT = new WrapperElementParser<>(CODE_QNAME, VALUE_ELEMENT);
+  private static final WrapperElementParser<QName> CODE_ELEMENT = new WrapperElementParser<>(CODE_QNAME, null, VALUE_ELEMENT);
   protected static final StringElementParser TEXT_ELEMENT = new StringElementParser(TEXT_QNAME, false);
-  private static final WrapperElementParser<String> REASON_ELEMENT = new WrapperElementParser<>(REASON_QNAME, TEXT_ELEMENT);
+  private static final WrapperElementParser<String> REASON_ELEMENT = new WrapperElementParser<>(REASON_QNAME, null, TEXT_ELEMENT);
   protected static final ElementParser<SOAPFaultException> FAULT_ELEMENT = new ElementParser<>(SOAPFaultException.class, FAULT_QNAME, (ctx) -> {
     final SOAPFault fault;
     try {
       fault = SOAP_FACTORY.createFault(cast(ctx).getRequiredChildValue(REASON_ELEMENT), cast(ctx).getRequiredChildValue(CODE_ELEMENT));
     } catch (SOAPException soape) {
-      throw new RuntimeException(soape);
+      throw new ElementValueParsingException(soape, cast(ctx));
     }
-    throw new SOAPFaultException(fault);
-  }, false, CODE_ELEMENT, REASON_ELEMENT);
+    throw new ElementValueParsingException(new SOAPFaultException(fault), cast(ctx));
+  }, false, null, CODE_ELEMENT, REASON_ELEMENT);
 
   @SafeVarargs
-  protected SOAPStreamParser(final Class<T> targetValueClass, final EnvelopeElementParser envelopeParser, final @NonNull ElementParser<? extends T>... targetParsers) {
-    super(targetValueClass, envelopeParser, targetParsers);
+  protected SOAPStreamParser(final Class<T> targetValueClass, final Set<EnvelopeElementParser> envelopeParsers, final @NonNull ElementParser<? extends T>... targetParsers) {
+    super(targetValueClass, envelopeParsers, targetParsers);
     //TODO return; // https://bugs.openjdk.java.net/browse/JDK-8036775
   }
 
@@ -104,7 +104,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
   protected static class HeaderElementParser extends ContainerElementParser {
 
     public HeaderElementParser(final @NonNull ElementParser<?> @Nullable... childParsers) {
-      super(HEADER_QNAME, childParsers);
+      super(HEADER_QNAME, Collections.singleton(FAULT_ELEMENT), childParsers);
       return;
     }
 
@@ -113,7 +113,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
   protected static class BodyElementParser extends ContainerElementParser {
 
     public BodyElementParser(final @NonNull ElementParser<?> @Nullable... childElementParsers) {
-      super(BODY_QNAME, ((childElementParsers != null) ? Stream.concat(Stream.of(FAULT_ELEMENT), Stream.of(childElementParsers)) : Stream.of(FAULT_ELEMENT)).toArray((n) -> new ElementParser<?>[n]));
+      super(BODY_QNAME, Collections.singleton(FAULT_ELEMENT), childElementParsers);
       return;
     }
 
@@ -122,12 +122,12 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
   protected static class EnvelopeElementParser extends ContainerElementParser {
 
     public EnvelopeElementParser(final HeaderElementParser headerParser, final BodyElementParser bodyParser) {
-      super(ENVELOPE_QNAME, headerParser, bodyParser);
+      super(ENVELOPE_QNAME, Collections.singleton(FAULT_ELEMENT), headerParser, bodyParser);
       return;
     }
 
     public EnvelopeElementParser(final BodyElementParser bodyParser) {
-      super(ENVELOPE_QNAME, bodyParser);
+      super(ENVELOPE_QNAME, Collections.singleton(FAULT_ELEMENT), bodyParser);
       return;
     }
 
@@ -148,6 +148,11 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
       super(builderType, namespace, elementParsers, unmodifiable);
       this.elementParsers.add(FAULT_ELEMENT);
       return;
+    }
+
+    @Override
+    protected @Nullable Collection<? extends ContentParser<?,?>> getDefaultChildParsers(final QName elementName, final Class<?> targetValueClass) {
+      return Collections.singleton(FAULT_ELEMENT);
     }
 
     @Override
@@ -232,8 +237,8 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
     }
 
     @Override
-    public <@NonNull T> SOAPStreamParser<T> createXMLParser(final Class<T> targetValueClass, final QName documentElementName, final @NonNull QName... targetElementNames) throws NoSuchElementException {
-      return new SOAPStreamParser<T>(targetValueClass, getParserOfParserType(EnvelopeElementParser.class, documentElementName), getParsersWithTargetType(targetValueClass, targetElementNames));
+    public <@NonNull T> SOAPStreamParser<T> createXMLParser(final Class<T> targetValueClass, final Set<QName> documentElementNames, final @NonNull QName... targetElementNames) throws NoSuchElementException {
+      return new SOAPStreamParser<T>(targetValueClass, documentElementNames.stream().map((documentElementName) -> getParserOfParserType(EnvelopeElementParser.class, documentElementName)).collect(Collectors.toSet()), getParsersWithTargetType(targetValueClass, targetElementNames));
     }
 
     /**
@@ -249,7 +254,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
      * @see #createSOAPParser(Class, String[])
      */
     public <@NonNull T> SOAPStreamParser<T> createSOAPParser(final Class<T> targetValueClass, final @NonNull QName... targetElementNames) throws NoSuchElementException {
-      return new SOAPStreamParser<T>(targetValueClass, getParserOfParserType(EnvelopeElementParser.class, ENVELOPE_QNAME), getParsersWithTargetType(targetValueClass, targetElementNames));
+      return new SOAPStreamParser<T>(targetValueClass, Collections.singleton(getParserOfParserType(EnvelopeElementParser.class, ENVELOPE_QNAME)), getParsersWithTargetType(targetValueClass, targetElementNames));
     }
 
     /**
