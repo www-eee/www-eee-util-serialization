@@ -52,9 +52,8 @@ public class SOAPStreamParserTest {
   @Test
   public void testIgnoreExtra() throws Exception {
     final URL testURL = SOAPStreamParserTest.class.getResource("/net/www_eee/util/serialization/parser/xml/soap/departures_ignore_extra.xml");
-    System.err.println(DEPARTURE_STREAM_PARSER.parse(testURL.openStream()).collect(Collectors.toList()));
-    final Stream<Departure> departures = DEPARTURE_STREAM_PARSER.parse(testURL.openStream());
-    assertEquals("Canada[2001-01-01],USA[2001-02-01],Australia[2001-03-01]", departures.map(Object::toString).collect(Collectors.joining(",")));
+    final Stream<Departure> departures = StreamSupport.stream(Spliterators.spliteratorUnknownSize(DEPARTURE_STREAM_PARSER.parse(testURL.openStream()), Spliterator.ORDERED | Spliterator.NONNULL), false);
+    assertEquals("Canada[2001-01-01], USA[2001-02-01], Australia[2001-03-01]", departures.map(Object::toString).collect(Collectors.joining(", ")));
     return;
   }
 
@@ -89,7 +88,7 @@ public class SOAPStreamParserTest {
 
     final URL testURL = SOAPStreamParserTest.class.getResource("/net/www_eee/util/serialization/parser/xml/soap/departures_local_fault.xml");
     try {
-      final Iterator<Departure> departures = DEPARTURE_STREAM_PARSER.parse(testURL.openStream()).iterator();
+      final Iterator<Departure> departures = DEPARTURE_STREAM_PARSER.parse(testURL.openStream());
       assertEquals("Canada[2001-01-01]", departures.next().toString());
       assertEquals("USA[2001-02-01]", departures.next().toString());
       departures.next().toString();
@@ -107,7 +106,7 @@ public class SOAPStreamParserTest {
   @Test
   public void testLocalFaultRecovery() throws Exception {
     final URL testURL = SOAPStreamParserTest.class.getResource("/net/www_eee/util/serialization/parser/xml/soap/departures_local_fault.xml");
-    final Iterator<Departure> departures = DEPARTURE_STREAM_PARSER.parse(testURL.openStream()).iterator();
+    final Iterator<Departure> departures = DEPARTURE_STREAM_PARSER.parse(testURL.openStream());
     assertEquals("Canada[2001-01-01]", departures.next().toString());
     assertEquals("USA[2001-02-01]", departures.next().toString());
     try {

@@ -59,30 +59,70 @@ public class XMLStreamParser<@NonNull T> {
   }
 
   /**
-   * Parse the XML provided by the supplied {@link InputStream} into a {@link Stream} of target values.
+   * Parse the XML provided by the supplied {@link InputStream}, providing an {@link Iterator} to retrieve the target
+   * values.
    * 
    * @param inputStream The {@link InputStream} to read XML from.
-   * @return A {@link Stream} of target values, as defined by your {@linkplain #buildSchema(URI) schema}.
+   * @return An {@link Iterator} to retrieve the target values, as defined by your {@linkplain #buildSchema(URI)
+   * schema}.
    * @throws ParsingException If a problem was encountered while parsing.
    */
-  public final Stream<T> parse(final InputStream inputStream) throws ParsingException {
+  public final Iterator<T> parse(final InputStream inputStream) throws ParsingException {
+    final XMLEventReader reader;
     try {
-      final XMLEventReader reader = XML_INPUT_FACTORY.createXMLEventReader(inputStream);
-
-      ElementParser<?>.ParsingContextImpl targetParentContext = null;
-      try {
-        final XMLEvent documentEvent = reader.nextTag();
-        final Optional<? extends ElementParser<?>> documentParser = documentParsers.stream().filter((parser) -> parser.isParserFor(documentEvent)).findFirst();
-        if (!documentParser.isPresent()) return Stream.empty();
-        documentParser.get().parse(null, documentEvent, reader, targetParsers); // Read in events up until an element using the targetParser is encountered.
-      } catch (TerminatingParserException tpe) {
-        targetParentContext = tpe.getParsingContextImpl();
-      }
-
-      return (targetParentContext != null) ? StreamSupport.stream(new TargetValueSpliterator(targetParentContext, reader), false) : Stream.empty();
+      reader = XML_INPUT_FACTORY.createXMLEventReader(inputStream);
     } catch (XMLStreamException xse) {
       throw new XMLStreamParsingException(xse);
     }
+
+    ElementParser<?>.ParsingContextImpl targetParentContext = null;
+    try {
+      final XMLEvent documentEvent = nextTag(reader, inputStream);
+      final Optional<? extends ElementParser<?>> documentParser = documentParsers.stream().filter((parser) -> parser.isParserFor(documentEvent)).findFirst();
+      if (!documentParser.isPresent()) return Collections.emptyIterator();
+      documentParser.get().parse(null, documentEvent, reader, inputStream, targetParsers); // Read in events up until an element using the targetParser is encountered.
+    } catch (TerminatingParserException tpe) {
+      targetParentContext = tpe.getParsingContextImpl();
+    }
+
+    return (targetParentContext != null) ? new TargetValueIterator(targetParentContext, reader, inputStream) : Collections.emptyIterator();
+  }
+
+  private static final @Nullable XMLEvent peek(final XMLEventReader reader, final AutoCloseable closer) throws XMLStreamParsingException {
+    try {
+      return reader.peek();
+    } catch (XMLStreamException xmlse) {
+      close(reader, closer);
+      throw new XMLStreamParsingException(xmlse);
+    }
+  }
+
+  private static final XMLEvent nextTag(final XMLEventReader reader, final AutoCloseable closer) throws XMLStreamParsingException {
+    try {
+      return reader.nextTag();
+    } catch (XMLStreamException xmlse) {
+      close(reader, closer);
+      throw new XMLStreamParsingException(xmlse);
+    }
+  }
+
+  private static final XMLEvent nextEvent(final XMLEventReader reader, final AutoCloseable closer) throws XMLStreamParsingException {
+    try {
+      return reader.nextEvent();
+    } catch (XMLStreamException xmlse) {
+      close(reader, closer);
+      throw new XMLStreamParsingException(xmlse);
+    }
+  }
+
+  private static final void close(final XMLEventReader reader, final AutoCloseable closer) {
+    try {
+      reader.close();
+    } catch (XMLStreamException xmlse) {}
+    try {
+      closer.close();
+    } catch (Exception e) {}
+    return;
   }
 
   /**
@@ -92,27 +132,23 @@ public class XMLStreamParser<@NonNull T> {
    * @param reader The source of events.
    * @throws XMLStreamParsingException If there was a problem skipping this element.
    */
-  private static final void skip(final StartElement element, final XMLEventReader reader) throws XMLStreamParsingException {
-    try {
-      int depth = 1;
-      XMLEvent e = reader.nextEvent();
-      while (depth > 0) {
-        if (e.isStartElement()) {
-          depth++;
-        } else if (e.isEndElement()) {
-          depth--;
-        }
-        if (depth > 0) e = reader.nextEvent();
+  private static final void skip(final StartElement element, final XMLEventReader reader, final AutoCloseable closer) throws XMLStreamParsingException {
+    int depth = 1;
+    XMLEvent e = nextEvent(reader, closer);
+    while (depth > 0) {
+      if (e.isStartElement()) {
+        depth++;
+      } else if (e.isEndElement()) {
+        depth--;
       }
-    } catch (XMLStreamException xse) {
-      throw new XMLStreamParsingException(xse);
+      if (depth > 0) e = nextEvent(reader, closer);
     }
     return;
   }
 
-  private static final void ignoreEvent(final XMLEvent event, final XMLEventReader reader) throws XMLStreamParsingException {
+  private static final void ignoreEvent(final XMLEvent event, final XMLEventReader reader, final AutoCloseable closer) throws XMLStreamParsingException {
     if (event.isStartElement()) { // OK, swallow all the content for this...
-      skip(event.asStartElement(), reader);
+      skip(event.asStartElement(), reader, closer);
     } // Other element types don't have children, so we don't have to do anything else to ignore them in their entirety.
     return;
   }
@@ -695,72 +731,54 @@ public class XMLStreamParser<@NonNull T> {
 
   } // ElementParsingContext
 
-  private final class TargetValueSpliterator implements Spliterator<T> {
-    private final int CHARACTERISTICS = 0 | Spliterator.ORDERED | Spliterator.DISTINCT | Spliterator.NONNULL | Spliterator.IMMUTABLE;
+  private final class TargetValueIterator implements Iterator<T> {
     private final ElementParser<?>.ParsingContextImpl parentContext;
     private final XMLEventReader reader;
+    private final AutoCloseable closer;
 
-    public TargetValueSpliterator(final ElementParser<?>.ParsingContextImpl parentContext, final XMLEventReader reader) throws IllegalArgumentException {
+    public TargetValueIterator(final ElementParser<?>.ParsingContextImpl parentContext, final XMLEventReader reader, final AutoCloseable closer) throws IllegalArgumentException {
       if (!parentContext.getParser().getChildParsers().containsAll(targetParsers)) throw new IllegalStateException("Current parser not parent of target parsers");
       this.parentContext = parentContext;
       this.reader = reader;
+      this.closer = closer;
       return;
     }
 
     @Override
-    public int characteristics() {
-      return CHARACTERISTICS;
-    }
+    public boolean hasNext() {
+      while (reader.hasNext()) {
+        final @Nullable XMLEvent event = peek(reader, closer);
 
-    @Override
-    public long estimateSize() {
-      return Long.MAX_VALUE;
-    }
-
-    @Override
-    public @Nullable Spliterator<T> trySplit() {
-      return null;
-    }
-
-    @Override
-    public boolean tryAdvance(final Consumer<? super T> action) throws ParsingException {
-      try {
-        XMLEvent targetEvent = null;
-        ElementParser<? extends T> targetParser = null;
-        while ((reader.hasNext()) && (targetEvent == null)) {
-          final XMLEvent event = reader.nextEvent();
-
-          if ((event.isEndElement()) || (event.isEndDocument())) { // If this isn't the start of something new, and is the end of the parent element hosting our targetParser's elements, then we're done!
-            reader.close(); // Clean up after ourselves.
-            return false;
-          }
-
-          final Optional<? extends ContentParser<?,?>> parser = parentContext.getParser().findChildParserFor(event);
-          if (parser.isPresent()) {
-            if (targetParsers.contains(parser.get())) { // There could be some other content before the next applicable target event.
-              targetEvent = event;
-              @SuppressWarnings("unchecked")
-              final ElementParser<? extends T> p = (ElementParser<? extends T>)parser.get();
-              targetParser = p;
-            } else { // If they supplied a parser for this, so use it.
-              parser.get().parse(parentContext, event, reader, null);
-            }
-          } else {
-            ignoreEvent(event, reader);
-          }
+        if ((event == null) || (event.isEndElement()) || (event.isEndDocument())) { // If this isn't the start of something new, and is the end of the parent element hosting our targetParser's elements, then we're done!
+          close(reader, closer); // Clean up after ourselves.
+          return false;
         }
-        if ((targetEvent == null) || (targetParser == null)) return false;
-        action.accept(targetParser.parse(parentContext, targetEvent, reader, null));
-        return true;
-      } catch (XMLStreamException xmlse) {
-        try {
-          reader.close();
-        } catch (XMLStreamException xmlse2) {}
-        throw new XMLStreamParsingException(xmlse);
+
+        final Optional<? extends ContentParser<?,?>> parser = parentContext.getParser().findChildParserFor(event);
+        if (parser.isPresent()) {
+          if (targetParsers.contains(parser.get())) { // There could be some other content before the next applicable target event.
+            return true;
+          } else { // If they supplied a parser for this, so use it.
+            parser.get().parse(parentContext, nextEvent(reader, closer), reader, closer, null);
+          }
+        } else {
+          ignoreEvent(nextEvent(reader, closer), reader, closer);
+        }
       }
+      close(reader, closer);
+      return false;
     }
 
-  } // TargetValueSpliterator
+    @Override
+    public T next() throws ParsingException {
+      if (!hasNext()) throw new NoSuchElementException();
+      final XMLEvent targetEvent = nextEvent(reader, closer);
+      @SuppressWarnings("unchecked")
+      final ElementParser<? extends T> targetParser = (ElementParser<? extends T>)parentContext.getParser().findChildParserFor(targetEvent).get();
+      return targetParser.parse(parentContext, targetEvent, reader, closer, null);
+    }
+
+  } // TargetValueIterator
 
   /**
    * The base class for an {@link Exception} indicating some problem was encountered during
@@ -867,7 +885,7 @@ public class XMLStreamParser<@NonNull T> {
 
   /**
    * This exception is thrown to abort
-   * {@linkplain XMLStreamParser.ContentParser#parse(XMLStreamParser.ElementParser.ParsingContextImpl, XMLEvent, XMLEventReader, Set)
+   * {@linkplain XMLStreamParser.ContentParser#parse(XMLStreamParser.ElementParser.ParsingContextImpl, XMLEvent, XMLEventReader, AutoCloseable, Set)
    * parsing} and return the current {@linkplain #getParsingContextImpl() parsing context} when a specified
    * {@link ContentParser} is encountered.
    */
@@ -918,7 +936,7 @@ public class XMLStreamParser<@NonNull T> {
      * @return The value created from the supplied event and it's content.
      * @throws ParseException If there was a problem parsing.
      */
-    protected abstract T parse(final ElementParser<?>.@Nullable ParsingContextImpl parentContext, final XMLEvent event, final XMLEventReader reader, final @Nullable Set<? extends ElementParser<?>> terminatingParsers) throws ParsingException;
+    protected abstract T parse(final ElementParser<?>.@Nullable ParsingContextImpl parentContext, final XMLEvent event, final XMLEventReader reader, final AutoCloseable closer, final @Nullable Set<? extends ElementParser<?>> terminatingParsers) throws ParsingException;
 
   } // ContentParser
 
@@ -943,7 +961,7 @@ public class XMLStreamParser<@NonNull T> {
     }
 
     @Override
-    protected final String parse(final ElementParser<?>.@Nullable ParsingContextImpl parentContext, final XMLEvent event, final XMLEventReader reader, final @Nullable Set<? extends ElementParser<?>> terminatingParsers) throws ParsingException {
+    protected final String parse(final ElementParser<?>.@Nullable ParsingContextImpl parentContext, final XMLEvent event, final XMLEventReader reader, final AutoCloseable closer, final @Nullable Set<? extends ElementParser<?>> terminatingParsers) throws ParsingException {
       return event.asCharacters().getData();
     }
 
@@ -991,9 +1009,9 @@ public class XMLStreamParser<@NonNull T> {
     }
 
     @Override
-    protected final T parse(final ElementParser<?>.@Nullable ParsingContextImpl parentContext, final XMLEvent event, final XMLEventReader reader, final @Nullable Set<? extends ElementParser<?>> terminatingParsers) throws ParsingException {
+    protected final T parse(final ElementParser<?>.@Nullable ParsingContextImpl parentContext, final XMLEvent event, final XMLEventReader reader, final AutoCloseable closer, final @Nullable Set<? extends ElementParser<?>> terminatingParsers) throws ParsingException {
       final ParsingContextImpl context = (parentContext != null) ? new ParsingContextImpl(parentContext, eventClass.cast(event)) : new ParsingContextImpl(eventClass.cast(event));
-      context.parseChildren(reader, terminatingParsers);
+      context.parseChildren(reader, closer, terminatingParsers);
       final T targetValue;
       try {
         targetValue = targetValueFunction.apply(context);
@@ -1075,24 +1093,20 @@ public class XMLStreamParser<@NonNull T> {
         return getElementContextImpl(new ArrayDeque<>(getElementDepth() + 1));
       }
 
-      private XMLEvent getNextEvent(final XMLEventReader reader, final @Nullable Set<? extends ElementParser<?>> terminatingParsers) throws ParsingException {
-        try {
-          if (terminatingParsers != null) {
-            final Optional<? extends ContentParser<?,?>> childParser = findChildParserFor(reader.peek());
-            if ((childParser.isPresent()) && (terminatingParsers.contains(childParser.get()))) throw new TerminatingParserException(this);
-          }
-          return reader.nextEvent();
-        } catch (XMLStreamException xse) {
-          throw new XMLStreamParsingException(xse);
+      private XMLEvent getNextEvent(final XMLEventReader reader, final AutoCloseable closer, final @Nullable Set<? extends ElementParser<?>> terminatingParsers) throws ParsingException {
+        if (terminatingParsers != null) {
+          final Optional<? extends ContentParser<?,?>> childParser = findChildParserFor(peek(reader, closer));
+          if ((childParser.isPresent()) && (terminatingParsers.contains(childParser.get()))) throw new TerminatingParserException(this);
         }
+        return nextEvent(reader, closer);
       }
 
-      protected void parseChildren(final XMLEventReader reader, final @Nullable Set<? extends ElementParser<?>> terminatingParsers) throws ParsingException {
-        XMLEvent event = getNextEvent(reader, terminatingParsers);
+      protected void parseChildren(final XMLEventReader reader, final AutoCloseable closer, final @Nullable Set<? extends ElementParser<?>> terminatingParsers) throws ParsingException {
+        XMLEvent event = getNextEvent(reader, closer, terminatingParsers);
         while (!event.isEndElement()) {
           final Optional<? extends ContentParser<?,?>> parser = findChildParserFor(event);
           if (parser.isPresent()) {
-            final Object childValue = parser.get().parse(this, parser.get().eventClass.cast(event), reader, terminatingParsers);
+            final Object childValue = parser.get().parse(this, parser.get().eventClass.cast(event), reader, closer, terminatingParsers);
             final List<Object> existingValues = childValues.get(parser.get());
             if (existingValues != null) {
               existingValues.add(childValue);
@@ -1100,9 +1114,9 @@ public class XMLStreamParser<@NonNull T> {
               childValues.put(parser.get(), new CopyOnWriteArrayList<>(Collections.singleton(childValue)));
             }
           } else { // Ignore any content the user didn't specify a parser for...
-            ignoreEvent(event, reader);
+            ignoreEvent(event, reader, closer);
           }
-          event = getNextEvent(reader, terminatingParsers);
+          event = getNextEvent(reader, closer, terminatingParsers);
         }
         return;
       }
