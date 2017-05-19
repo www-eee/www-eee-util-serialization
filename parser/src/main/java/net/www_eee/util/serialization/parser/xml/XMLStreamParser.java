@@ -732,6 +732,14 @@ public class XMLStreamParser<@NonNull T> {
       return getInjectedValue(injectedValueClass, null);
     }
 
+    /**
+     * Throw an {@link ElementValueParsingException} to indicate a problem calculating the value for this element.
+     * 
+     * @param cause The cause of the problem.
+     * @return An {@link ElementValueParsingException} Indicating a problem calculating the value.
+     */
+    public ElementValueParsingException createElementValueParsingException(final Exception cause);
+
   } // ElementParsingContext
 
   private final class TargetValueIterator implements Iterator<T> {
@@ -786,7 +794,7 @@ public class XMLStreamParser<@NonNull T> {
         return valueParser.parse(parentContext, event, reader, closer, null);
       } else if (targetContainerElementParser.getChildExceptionParsers().contains(targetParser)) {
         @SuppressWarnings("unchecked")
-        final ElementParser<? extends Throwable> exceptionParser = (ElementParser<? extends Throwable>)targetParser;
+        final ElementParser<? extends Exception> exceptionParser = (ElementParser<? extends Exception>)targetParser;
         throw new ElementValueParsingException(exceptionParser.parse(parentContext, event, reader, closer, null), exceptionParser.new ParsingContextImpl(parentContext, exceptionParser.getEventClass().cast(event))); // The exceptionParser.parse() method will normally throw an ElementValueParsingException before we do here.
       }
       throw new IllegalStateException();
@@ -885,7 +893,7 @@ public class XMLStreamParser<@NonNull T> {
      * @param cause The cause of this exception.
      * @param context The context this exception occurred in.
      */
-    public ElementValueParsingException(final Throwable cause, final ElementParser<?>.ParsingContextImpl context) {
+    protected ElementValueParsingException(final Exception cause, final ElementParser<?>.ParsingContextImpl context) {
       super(cause.getClass().getName() + " parsing '" + context.getStartElement().getName().getLocalPart() + "' element: " + cause.getMessage(), Objects.requireNonNull(cause, "null cause"), context);
       return;
     }
@@ -905,7 +913,7 @@ public class XMLStreamParser<@NonNull T> {
    */
   private static class TargetContainerElementFoundException extends ElementParsingContextException {
 
-    public TargetContainerElementFoundException(final ElementParser<?>.ParsingContextImpl context) {
+    protected TargetContainerElementFoundException(final ElementParser<?>.ParsingContextImpl context) {
       super(context);
       return;
     }
@@ -987,10 +995,10 @@ public class XMLStreamParser<@NonNull T> {
     protected final QName elementName;
     private final Function<ElementParsingContext<T>,T> targetValueFunction;
     protected final boolean saveTargetValue;
-    private final Set<? extends ElementParser<? extends Throwable>> childExceptionParsers;
+    private final Set<? extends ElementParser<? extends Exception>> childExceptionParsers;
     private final Set<? extends ContentParser<?,?>> childValueParsers;
 
-    public ElementParser(final Class<T> targetValueClass, final QName elementName, final Function<ElementParsingContext<T>,T> targetValueFunction, final boolean saveTargetValue, final @Nullable Set<? extends ElementParser<? extends Throwable>> childExceptionParsers, final @Nullable Collection<? extends ContentParser<?,?>> childValueParsers) {
+    public ElementParser(final Class<T> targetValueClass, final QName elementName, final Function<ElementParsingContext<T>,T> targetValueFunction, final boolean saveTargetValue, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @Nullable Collection<? extends ContentParser<?,?>> childValueParsers) {
       super(StartElement.class, targetValueClass);
       this.elementName = elementName;
       this.targetValueFunction = targetValueFunction;
@@ -1000,7 +1008,7 @@ public class XMLStreamParser<@NonNull T> {
       return;
     }
 
-    public ElementParser(final Class<T> targetValueClass, final QName elementName, final Function<ElementParsingContext<T>,T> targetValueFunction, final boolean saveTargetValue, final @Nullable Set<? extends ElementParser<? extends Throwable>> childExceptionParsers, final @NonNull ContentParser<?,?> @Nullable... childValueParsers) {
+    public ElementParser(final Class<T> targetValueClass, final QName elementName, final Function<ElementParsingContext<T>,T> targetValueFunction, final boolean saveTargetValue, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @NonNull ContentParser<?,?> @Nullable... childValueParsers) {
       this(targetValueClass, elementName, targetValueFunction, saveTargetValue, childExceptionParsers, (childValueParsers != null) ? Arrays.asList(childValueParsers) : null);
       return;
     }
@@ -1009,7 +1017,7 @@ public class XMLStreamParser<@NonNull T> {
       return elementName;
     }
 
-    public final Set<? extends ElementParser<? extends Throwable>> getChildExceptionParsers() {
+    public final Set<? extends ElementParser<? extends Exception>> getChildExceptionParsers() {
       return childExceptionParsers;
     }
 
@@ -1173,13 +1181,18 @@ public class XMLStreamParser<@NonNull T> {
         return getElementParserEntries(childValues.entrySet().stream()).map((entry) -> new AbstractMap.SimpleImmutableEntry<>(new AbstractMap.SimpleImmutableEntry<>(entry.getKey().getElementName(), entry.getKey().getTargetValueClass()), entry.getValue()));
       }
 
+      @Override
+      public ElementValueParsingException createElementValueParsingException(final Exception cause) {
+        return new ElementValueParsingException(cause, this);
+      }
+
     } // ElementParser.ParsingContextImpl
 
   } // ElementParser
 
   protected static class ContainerElementParser extends ElementParser<StartElement> {
 
-    public ContainerElementParser(final QName elementName, final @Nullable Set<? extends ElementParser<? extends Throwable>> childExceptionParsers, final @NonNull ElementParser<?> @Nullable... childElementParsers) {
+    public ContainerElementParser(final QName elementName, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @NonNull ElementParser<?> @Nullable... childElementParsers) {
       super(StartElement.class, elementName, (context) -> context.getStartElement(), false, childExceptionParsers, childElementParsers);
       return;
     }
@@ -1195,12 +1208,12 @@ public class XMLStreamParser<@NonNull T> {
   protected static class WrapperElementParser<@NonNull T> extends ElementParser<T> {
 
     @SafeVarargs
-    public WrapperElementParser(final Class<T> targetValueClass, final QName elementName, final @Nullable Set<? extends ElementParser<? extends Throwable>> childExceptionParsers, final @NonNull ElementParser<? extends T> @Nullable... wrappedElementParsers) {
+    public WrapperElementParser(final Class<T> targetValueClass, final QName elementName, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @NonNull ElementParser<? extends T> @Nullable... wrappedElementParsers) {
       super(targetValueClass, elementName, (ctx) -> ctx.getRequiredChildValue((QName)null, targetValueClass), false, childExceptionParsers, wrappedElementParsers);
       return;
     }
 
-    public WrapperElementParser(final QName elementName, final @Nullable Set<? extends ElementParser<? extends Throwable>> childExceptionParsers, final ElementParser<T> wrappedElementParser) {
+    public WrapperElementParser(final QName elementName, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final ElementParser<T> wrappedElementParser) {
       this(wrappedElementParser.getTargetValueClass(), elementName, childExceptionParsers, wrappedElementParser);
       return;
     }
@@ -1233,7 +1246,7 @@ public class XMLStreamParser<@NonNull T> {
 
   protected static class InjectedTargetElementParser<@NonNull T> extends ElementParser<T> {
 
-    public InjectedTargetElementParser(final Class<T> targetValueClass, final Class<? extends T> targetImplClass, final QName elementName, final boolean saveTargetValue, final @Nullable Set<? extends ElementParser<? extends Throwable>> childExceptionParsers, final @Nullable Collection<? extends ElementParser<?>> childValueParsers, final @Nullable Map<String,Function<ElementParsingContext<T>,@Nullable Object>> injectionSpecs) throws IllegalArgumentException {
+    public InjectedTargetElementParser(final Class<T> targetValueClass, final Class<? extends T> targetImplClass, final QName elementName, final boolean saveTargetValue, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @Nullable Collection<? extends ElementParser<?>> childValueParsers, final @Nullable Map<String,Function<ElementParsingContext<T>,@Nullable Object>> injectionSpecs) throws IllegalArgumentException {
       super(targetValueClass, elementName, (ctx) -> ctx.getInjectedValue(targetImplClass, injectionSpecs), saveTargetValue, childExceptionParsers, childValueParsers);
       return;
     }
@@ -1296,7 +1309,7 @@ public class XMLStreamParser<@NonNull T> {
       return;
     }
 
-    protected @Nullable Set<? extends ElementParser<? extends Throwable>> getChildExceptionParsers(final QName elementName, final Class<?> targetValueClass) {
+    protected @Nullable Set<? extends ElementParser<? extends Exception>> getChildExceptionParsers(final QName elementName, final Class<?> targetValueClass) {
       return null;
     }
 

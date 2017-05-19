@@ -78,9 +78,9 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
     try {
       fault = SOAP_FACTORY.createFault(cast(ctx).getRequiredChildValue(REASON_ELEMENT_PARSER), cast(ctx).getRequiredChildValue(CODE_ELEMENT_PARSER));
     } catch (SOAPException soape) {
-      throw new ElementValueParsingException(soape, cast(ctx));
+      throw ctx.createElementValueParsingException(soape);
     }
-    throw new ElementValueParsingException(new SOAPFaultException(fault), cast(ctx));
+    throw ctx.createElementValueParsingException(new SOAPFaultException(fault));
   }, false, null, CODE_ELEMENT_PARSER, REASON_ELEMENT_PARSER);
 
   @SafeVarargs
@@ -151,7 +151,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
     }
 
     @Override
-    protected @Nullable Set<? extends ElementParser<? extends Throwable>> getChildExceptionParsers(final QName elementName, final Class<?> targetValueClass) {
+    protected @Nullable Set<? extends ElementParser<? extends Exception>> getChildExceptionParsers(final QName elementName, final Class<?> targetValueClass) {
       return Collections.singleton(FAULT_ELEMENT_PARSER);
     }
 
