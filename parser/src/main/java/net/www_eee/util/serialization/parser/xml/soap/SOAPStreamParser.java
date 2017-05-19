@@ -85,7 +85,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
 
   @SafeVarargs
   protected SOAPStreamParser(final Class<T> targetValueClass, final Set<EnvelopeElementParser> envelopeParsers, final ContainerElementParser targetContainerElementParser, final @NonNull ElementParser<? extends T>... targetValueParsers) {
-    super(targetValueClass, envelopeParsers, targetContainerElementParser, Collections.singleton(FAULT_ELEMENT_PARSER), targetValueParsers);
+    super(targetValueClass, envelopeParsers, targetContainerElementParser, targetValueParsers);
     //TODO return; // https://bugs.openjdk.java.net/browse/JDK-8036775
   }
 
@@ -152,11 +152,6 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
 
     @Override
     protected @Nullable Set<? extends ElementParser<? extends Throwable>> getChildExceptionParsers(final QName elementName, final Class<?> targetValueClass) {
-      return Collections.singleton(FAULT_ELEMENT_PARSER);
-    }
-
-    @Override
-    protected @Nullable Set<? extends ElementParser<? extends Throwable>> getTargetExceptionParsers() {
       return Collections.singleton(FAULT_ELEMENT_PARSER);
     }
 

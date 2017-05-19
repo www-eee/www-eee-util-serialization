@@ -40,18 +40,15 @@ public class XMLStreamParser<@NonNull T> {
   protected final Class<T> targetValueClass;
   private final Set<? extends ElementParser<?>> documentParsers;
   private final ContainerElementParser targetContainerElementParser;
-  private final Set<? extends ElementParser<? extends Throwable>> targetExceptionParsers;
   private final Set<? extends ElementParser<? extends T>> targetValueParsers;
 
   @SafeVarargs
-  protected XMLStreamParser(final Class<T> targetValueClass, final Set<? extends ElementParser<?>> documentParsers, final ContainerElementParser targetContainerElementParser, final @Nullable Set<? extends ElementParser<? extends Throwable>> targetExceptionParsers, final @NonNull ElementParser<? extends T>... targetValueParsers) {
+  protected XMLStreamParser(final Class<T> targetValueClass, final Set<? extends ElementParser<?>> documentParsers, final ContainerElementParser targetContainerElementParser, final @NonNull ElementParser<? extends T>... targetValueParsers) {
     this.targetValueClass = Objects.requireNonNull(targetValueClass, "null targetValueClass");
     this.documentParsers = Collections.unmodifiableSet(new CopyOnWriteArraySet<>(Objects.requireNonNull(documentParsers, "null documentParsers")));
     this.targetContainerElementParser = Objects.requireNonNull(targetContainerElementParser, "null targetContainerElementParser");
-    this.targetExceptionParsers = (targetExceptionParsers != null) ? Collections.unmodifiableSet(new CopyOnWriteArraySet<>(targetExceptionParsers)) : Collections.emptySet();
     this.targetValueParsers = Collections.unmodifiableSet(new CopyOnWriteArraySet<>(Arrays.asList(Objects.requireNonNull(targetValueParsers, "null targetParsers"))));
     if (!targetContainerElementParser.getChildValueParsers().containsAll(this.targetValueParsers)) throw new IllegalStateException("The specified target value elements (" + this.targetValueParsers + ") are not children of the specified target container element (" + targetContainerElementParser + ")");
-    if (!targetContainerElementParser.getChildExceptionParsers().containsAll(this.targetExceptionParsers)) throw new IllegalStateException("The specified target exception elements (" + this.targetExceptionParsers + ") are not children of the specified target container element (" + targetContainerElementParser + ")");
     return;
   }
 
@@ -764,7 +761,7 @@ public class XMLStreamParser<@NonNull T> {
         if (childParser.isPresent()) {
           if (targetValueParsers.contains(childParser.get())) {
             return true;
-          } else if (targetExceptionParsers.contains(childParser.get())) {
+          } else if (targetContainerElementParser.getChildExceptionParsers().contains(childParser.get())) {
             return true;
           } else { // If they supplied a parser for this, use it, as it could save values in the parsing context, etc.
             childParser.get().parse(parentContext, nextEvent(reader, closer), reader, closer, null);
@@ -787,7 +784,7 @@ public class XMLStreamParser<@NonNull T> {
         @SuppressWarnings("unchecked")
         final ElementParser<? extends T> valueParser = (ElementParser<? extends T>)targetParser;
         return valueParser.parse(parentContext, event, reader, closer, null);
-      } else if (targetExceptionParsers.contains(targetParser)) {
+      } else if (targetContainerElementParser.getChildExceptionParsers().contains(targetParser)) {
         @SuppressWarnings("unchecked")
         final ElementParser<? extends Throwable> exceptionParser = (ElementParser<? extends Throwable>)targetParser;
         throw new ElementValueParsingException(exceptionParser.parse(parentContext, event, reader, closer, null), exceptionParser.new ParsingContextImpl(parentContext, exceptionParser.getEventClass().cast(event))); // The exceptionParser.parse() method will normally throw an ElementValueParsingException before we do here.
@@ -1300,10 +1297,6 @@ public class XMLStreamParser<@NonNull T> {
     }
 
     protected @Nullable Set<? extends ElementParser<? extends Throwable>> getChildExceptionParsers(final QName elementName, final Class<?> targetValueClass) {
-      return null;
-    }
-
-    protected @Nullable Set<? extends ElementParser<? extends Throwable>> getTargetExceptionParsers() {
       return null;
     }
 
@@ -1932,7 +1925,7 @@ public class XMLStreamParser<@NonNull T> {
      * @see #createXMLParser(Class, String, String, String[])
      */
     public <@NonNull T> XMLStreamParser<T> createXMLParser(final Class<T> targetValueClass, final Set<QName> documentElementNames, final QName targetContainerElementName, final @NonNull QName... targetValueElementNames) throws NoSuchElementException {
-      return new XMLStreamParser<T>(targetValueClass, documentElementNames.stream().map((documentElementName) -> getParser(documentElementName)).collect(Collectors.toSet()), getParserOfParserType(ContainerElementParser.class, targetContainerElementName), getTargetExceptionParsers(), getParsersWithTargetType(targetValueClass, targetValueElementNames));
+      return new XMLStreamParser<T>(targetValueClass, documentElementNames.stream().map((documentElementName) -> getParser(documentElementName)).collect(Collectors.toSet()), getParserOfParserType(ContainerElementParser.class, targetContainerElementName), getParsersWithTargetType(targetValueClass, targetValueElementNames));
     }
 
     /**
