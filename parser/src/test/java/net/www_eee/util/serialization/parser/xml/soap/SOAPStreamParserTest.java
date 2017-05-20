@@ -37,10 +37,10 @@ public class SOAPStreamParserTest {
   protected static final SOAPStreamParser<Departure> DEPARTURE_STREAM_PARSER;
   static {
     final SOAPStreamParser.SchemaBuilder<? extends SOAPStreamParser.SchemaBuilder<?>> schema = SOAPStreamParser.buildSchema(URI.create("http://www_eee.net/ns/"));
-    schema.defineSimpleElement("departureYear", Year.class, (ctx, value) -> Year.parse(value), true).defineHeaderElementWithChildBuilder().addChild("departureYear").completeDefinition().defineStringElement("departing").defineSimpleElement("departureMonthDay", MonthDay.class, MonthDay::parse);
+    schema.defineSimpleElement("departureYear", Year.class, (ctx, value) -> Year.parse(value), true).defineHeaderElementWithChildBuilder().addChildValueElement("departureYear").completeDefinition().defineStringElement("departing").defineSimpleElement("departureMonthDay", MonthDay.class, MonthDay::parse);
     schema.defineElementWithInjectedTargetBuilder("departure", Departure.class).injectChildObject("Departing", "departing").injectChildObject("DepartureMonthDay", "departureMonthDay").injectSavedObject("DepartureYear", "departureYear").completeDefinition();
-    // schema.defineElementWithChildBuilder("departure", Departure.class, (ctx) -> new Departure(ctx.getRequiredChildValue("departing", String.class), ctx.getRequiredChildValue("departureMonthDay", MonthDay.class).atYear(ctx.getRequiredSavedValue("departureYear", Year.class).getValue())), false).addChild("departing").addChild("departureMonthDay").completeDefinition();
-    schema.defineContainerElementWithChildBuilder("departures").addChild("departure").addChild(SOAPStreamParser.FAULT_QNAME).completeDefinition().defineBodyElement("departures");
+    // schema.defineElementWithChildBuilder("departure", Departure.class, (ctx) -> new Departure(ctx.getRequiredChildValue("departing", String.class), ctx.getRequiredChildValue("departureMonthDay", MonthDay.class).atYear(ctx.getRequiredSavedValue("departureYear", Year.class).getValue())), false).addChildValueElement("departing").addChildValueElement("departureMonthDay").completeDefinition();
+    schema.defineContainerElementWithChildBuilder("departures").addChildValueElement("departure").addChildExceptionElement(SOAPStreamParser.FAULT_QNAME).completeDefinition().defineBodyElement("departures");
     DEPARTURE_STREAM_PARSER = schema.defineEnvelopeElement(true).createSOAPParser(Departure.class, "departures", "departure");
   }
 
@@ -70,8 +70,8 @@ public class SOAPStreamParserTest {
     final URL testURL = SOAPStreamParserTest.class.getResource("/net/www_eee/util/serialization/parser/xml/soap/departures_global_fault.xml");
     try {
       DEPARTURE_STREAM_PARSER.parse(testURL.openStream());
-    } catch (SOAPStreamParser.ElementValueParsingException evpe) {
-      throw evpe.getCause();
+    } catch (SOAPStreamParser.ExceptionElementException eee) {
+      throw eee.getCause();
     }
     return;
   }
@@ -92,8 +92,8 @@ public class SOAPStreamParserTest {
       assertEquals("Canada[2001-01-01]", departures.next().toString());
       assertEquals("USA[2001-02-01]", departures.next().toString());
       departures.next().toString();
-    } catch (SOAPStreamParser.ElementValueParsingException evpe) {
-      throw evpe.getCause();
+    } catch (SOAPStreamParser.ExceptionElementException eee) {
+      throw eee.getCause();
     }
     return;
   }
@@ -112,7 +112,7 @@ public class SOAPStreamParserTest {
     try {
       departures.next().toString();
       fail("Expected SOAPFaultException");
-    } catch (SOAPStreamParser.ElementValueParsingException evpe) {}
+    } catch (SOAPStreamParser.ExceptionElementException eee) {}
     assertEquals("Australia[2001-03-01]", departures.next().toString());
 
     return;

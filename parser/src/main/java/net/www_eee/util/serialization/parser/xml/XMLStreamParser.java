@@ -67,7 +67,11 @@ public class XMLStreamParser<@NonNull T> {
    * 
    * @param inputStream The {@link InputStream} to read XML from.
    * @return An {@link Iterator} to retrieve the target values, as defined by your {@linkplain #buildSchema(URI)
-   * schema}.
+   * schema}. The returned Iterator provides an additional guarantee that any
+   * {@link RecoverableExceptionElementException} thrown by the {@link Iterator#next()} method (due to parsing an
+   * {@linkplain SchemaBuilder.ChildElementListBuilder#addChildExceptionElement(QName, Class) exception element}) will
+   * be recoverable from, meaning that, after such an exception is thrown, you can then continue iterating over any
+   * subsequent target values.
    * @throws ParsingException If a problem was encountered while parsing.
    */
   public final Iterator<T> parse(final InputStream inputStream) throws ParsingException {
@@ -681,11 +685,11 @@ public class XMLStreamParser<@NonNull T> {
      * {@link XMLStreamParser.ElementParsingContext ElementParsingContext}. These mappings can be used to either alter
      * the default values being injected or to supplement them with additional ones.
      * @return The injected target value.
-     * @throws ElementValueParsingException If a {@link MappingException} exception occurred while injecting the object.
+     * @throws ElementValueException If a {@link MappingException} exception occurred while injecting the object.
      * @see DefaultRecordMapper
      * @see #getInjectedValue(Class)
      */
-    public default <@NonNull IT> IT getInjectedValue(final Class<IT> injectedValueClass, final @Nullable Map<String,Function<ElementParsingContext<T>,@Nullable Object>> injectionSpecs) throws ElementValueParsingException {
+    public default <@NonNull IT> IT getInjectedValue(final Class<IT> injectedValueClass, final @Nullable Map<String,Function<ElementParsingContext<T>,@Nullable Object>> injectionSpecs) throws ElementValueException {
       final Map<String,Field<Object>> fields = new HashMap<>();
       final Consumer<String> defineField = (fieldName) -> fields.put(fieldName, DSL.field(DSL.name(fieldName)));
       getAttrs().keySet().stream().map(QName::getLocalPart).forEach(defineField);
@@ -701,7 +705,7 @@ public class XMLStreamParser<@NonNull T> {
       try {
         return record.into(injectedValueClass);
       } catch (MappingException me) {
-        throw new ElementValueParsingException(me, cast(this));
+        throw createElementValueException(me);
       }
     }
 
@@ -724,21 +728,21 @@ public class XMLStreamParser<@NonNull T> {
      * @param <IT> The type of object being injected.
      * @param injectedValueClass The {@link Class} of object being injected.
      * @return The injected target value.
-     * @throws ElementValueParsingException If a {@link MappingException} exception occurred while injecting the object.
+     * @throws ElementValueException If a {@link MappingException} exception occurred while injecting the object.
      * @see DefaultRecordMapper
      * @see #getInjectedValue(Class, Map)
      */
-    public default <@NonNull IT> IT getInjectedValue(final Class<IT> injectedValueClass) throws ElementValueParsingException {
+    public default <@NonNull IT> IT getInjectedValue(final Class<IT> injectedValueClass) throws ElementValueException {
       return getInjectedValue(injectedValueClass, null);
     }
 
     /**
-     * Throw an {@link ElementValueParsingException} to indicate a problem calculating the value for this element.
+     * Create an {@link ElementValueException}.
      * 
-     * @param cause The cause of the problem.
-     * @return An {@link ElementValueParsingException} Indicating a problem calculating the value.
+     * @param cause The {@linkplain ElementValueException#getCause() cause}.
+     * @return The created {@link ElementValueException}.
      */
-    public ElementValueParsingException createElementValueParsingException(final Exception cause);
+    public ElementValueException createElementValueException(final Exception cause);
 
   } // ElementParsingContext
 
@@ -755,7 +759,7 @@ public class XMLStreamParser<@NonNull T> {
     }
 
     @Override
-    public boolean hasNext() {
+    public boolean hasNext() throws ParsingException {
       while (reader.hasNext()) {
         final @Nullable XMLEvent event = peek(reader, closer);
 
@@ -787,15 +791,15 @@ public class XMLStreamParser<@NonNull T> {
     public T next() throws ParsingException {
       if (!hasNext()) throw new NoSuchElementException();
       final XMLEvent event = nextEvent(reader, closer);
-      final ContentParser<?,?> targetParser = parentContext.getParser().findChildParserFor(event).get(); // Since hasNext() returned true, we know there is a target parser for this event which is either a content parser or an exception parser...
-      if (targetValueParsers.contains(targetParser)) {
+      final ContentParser<?,?> childParser = parentContext.getParser().findChildParserFor(event).get(); // Since hasNext() returned true, we know there is a child parser for this event which is either a target value parser or an exception parser...
+      if (targetValueParsers.contains(childParser)) {
         @SuppressWarnings("unchecked")
-        final ElementParser<? extends T> valueParser = (ElementParser<? extends T>)targetParser;
-        return valueParser.parse(parentContext, event, reader, closer, null);
-      } else if (targetContainerElementParser.getChildExceptionParsers().contains(targetParser)) {
+        final ElementParser<? extends T> targetValueParser = (ElementParser<? extends T>)childParser;
+        return targetValueParser.parse(parentContext, event, reader, closer, null);
+      } else if (targetContainerElementParser.getChildExceptionParsers().contains(childParser)) {
         @SuppressWarnings("unchecked")
-        final ElementParser<? extends Exception> exceptionParser = (ElementParser<? extends Exception>)targetParser;
-        throw new ElementValueParsingException(exceptionParser.parse(parentContext, event, reader, closer, null), exceptionParser.new ParsingContextImpl(parentContext, exceptionParser.getEventClass().cast(event))); // The exceptionParser.parse() method will normally throw an ElementValueParsingException before we do here.
+        final ElementParser<? extends Exception> exceptionParser = (ElementParser<? extends Exception>)childParser;
+        throw new RecoverableExceptionElementException(exceptionParser.parse(parentContext, event, reader, closer, null), exceptionParser.new ParsingContextImpl(parentContext, exceptionParser.getEventClass().cast(event)));
       }
       throw new IllegalStateException();
     }
@@ -804,8 +808,9 @@ public class XMLStreamParser<@NonNull T> {
 
   /**
    * The base class for an {@link Exception} indicating some problem was encountered during
-   * {@linkplain XMLStreamParser#parse(InputStream) parsing}. Instances will normally either be an
-   * {@link XMLStreamParsingException} or {@link ElementValueParsingException}.
+   * {@linkplain XMLStreamParser#parse(InputStream) parsing}. Clients could receive subclasses including
+   * {@link XMLStreamParsingException}, {@link ElementValueException}, {@link ExceptionElementException}, or
+   * {@link RecoverableExceptionElementException}.
    */
   public abstract static class ParsingException extends RuntimeException {
 
@@ -881,19 +886,20 @@ public class XMLStreamParser<@NonNull T> {
   } // ElementParsingContextException
 
   /**
-   * A {@link ParsingException ParsingException} which indicates a problem occurred while mapping the
-   * {@linkplain XMLStreamParser#parse(InputStream) parsed} XML into a {@linkplain XMLStreamParser#getTargetValueClass()
-   * target value}.
+   * A {@link ParsingException ParsingException} which indicates an exception occurred while calculating the
+   * {@linkplain XMLStreamParser#getTargetValueClass() target value} for an
+   * {@linkplain XMLStreamParser.SchemaBuilder#defineElement(String, Class, Function) element} from it's
+   * {@link XMLStreamParser.ElementParsingContext ElementParsingContext}.
    */
-  public static class ElementValueParsingException extends ElementParsingContextException {
+  public static class ElementValueException extends ElementParsingContextException {
 
     /**
-     * Construct a new <code>ElementValueParsingException</code>.
+     * Construct a new {@link ElementValueException}.
      * 
      * @param cause The cause of this exception.
      * @param context The context this exception occurred in.
      */
-    protected ElementValueParsingException(final Exception cause, final ElementParser<?>.ParsingContextImpl context) {
+    protected ElementValueException(final Exception cause, final ElementParser<?>.ParsingContextImpl context) {
       super(cause.getClass().getName() + " parsing '" + context.getStartElement().getName().getLocalPart() + "' element: " + cause.getMessage(), Objects.requireNonNull(cause, "null cause"), context);
       return;
     }
@@ -903,7 +909,56 @@ public class XMLStreamParser<@NonNull T> {
       return Objects.requireNonNull(Exception.class.cast(super.getCause()));
     }
 
-  } // ElementValueParsingException
+  } // ElementValueException
+
+  /**
+   * A {@link ParsingException ParsingException} indicating the parser encountered an
+   * {@linkplain SchemaBuilder.ChildElementListBuilder#addChildExceptionElement(QName, Class) exception element} within
+   * the content which represents an error or problem.
+   * 
+   * @see SchemaBuilder.ChildElementListBuilder#addChildExceptionElement(QName, Class)
+   */
+  public static class ExceptionElementException extends ElementParsingContextException {
+
+    /**
+     * Construct a new {@link ExceptionElementException}.
+     * 
+     * @param exception The target value {@link Exception} generated by the exception element.
+     * @param context The context this exception occurred in.
+     */
+    protected ExceptionElementException(final Exception exception, final ElementParser<?>.ParsingContextImpl context) {
+      super(exception.getClass().getName() + " from '" + context.getStartElement().getName().getLocalPart() + "' element: " + exception.getMessage(), Objects.requireNonNull(exception, "null exception"), context);
+      return;
+    }
+
+    @Override
+    public Exception getCause() {
+      return Objects.requireNonNull(Exception.class.cast(super.getCause()));
+    }
+
+  } // ExceptionElementException
+
+  /**
+   * A special case of {@link ExceptionElementException ExceptionElementException}, thrown during
+   * {@linkplain XMLStreamParser#parse(InputStream) parsing} to indicate you can continue iterating over any subsequent
+   * target values.
+   * 
+   * @see XMLStreamParser#parse(InputStream)
+   */
+  public static class RecoverableExceptionElementException extends ExceptionElementException {
+
+    /**
+     * Construct a new {@link RecoverableExceptionElementException}.
+     * 
+     * @param exception The target value {@link Exception} generated by the exception element.
+     * @param context The context this exception occurred in.
+     */
+    protected RecoverableExceptionElementException(final Exception exception, final ElementParser<?>.ParsingContextImpl context) {
+      super(exception, context);
+      return;
+    }
+
+  } // RecoverableExceptionElementException
 
   /**
    * This exception is thrown to abort
@@ -1003,13 +1058,13 @@ public class XMLStreamParser<@NonNull T> {
       this.elementName = elementName;
       this.targetValueFunction = targetValueFunction;
       this.saveTargetValue = saveTargetValue;
-      this.childExceptionParsers = (childExceptionParsers != null) ? Collections.unmodifiableSet(new CopyOnWriteArraySet<>(childExceptionParsers)) : Collections.emptySet();
-      this.childValueParsers = (childValueParsers != null) ? Collections.unmodifiableSet(new CopyOnWriteArraySet<>(childValueParsers)) : Collections.emptySet();
+      this.childExceptionParsers = ((childExceptionParsers != null) && (!childExceptionParsers.isEmpty())) ? Collections.unmodifiableSet(new CopyOnWriteArraySet<>(childExceptionParsers)) : Collections.emptySet();
+      this.childValueParsers = ((childValueParsers != null) && (!childValueParsers.isEmpty())) ? Collections.unmodifiableSet(new CopyOnWriteArraySet<>(childValueParsers)) : Collections.emptySet();
       return;
     }
 
     public ElementParser(final Class<T> targetValueClass, final QName elementName, final Function<ElementParsingContext<T>,T> targetValueFunction, final boolean saveTargetValue, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @NonNull ContentParser<?,?> @Nullable... childValueParsers) {
-      this(targetValueClass, elementName, targetValueFunction, saveTargetValue, childExceptionParsers, (childValueParsers != null) ? Arrays.asList(childValueParsers) : null);
+      this(targetValueClass, elementName, targetValueFunction, saveTargetValue, childExceptionParsers, ((childValueParsers != null) && (childValueParsers.length > 0)) ? Arrays.asList(childValueParsers) : null);
       return;
     }
 
@@ -1035,20 +1090,23 @@ public class XMLStreamParser<@NonNull T> {
       return (event != null) ? Stream.concat(childExceptionParsers.stream(), childValueParsers.stream()).filter((parser) -> parser.isParserFor(event)).findFirst() : Optional.empty();
     }
 
-    @Override
-    protected T parse(final ElementParser<?>.@Nullable ParsingContextImpl parentContext, final XMLEvent event, final XMLEventReader reader, final AutoCloseable closer, final @Nullable ContainerElementParser targetContainerElementParser) throws ParsingException {
-      final ParsingContextImpl context = (parentContext != null) ? new ParsingContextImpl(parentContext, eventClass.cast(event)) : new ParsingContextImpl(eventClass.cast(event));
+    protected T parseImpl(final ParsingContextImpl context, final XMLEventReader reader, final AutoCloseable closer, final @Nullable ContainerElementParser targetContainerElementParser) throws ParsingException {
       context.parseChildren(reader, closer, targetContainerElementParser);
       final T targetValue;
       try {
         targetValue = targetValueFunction.apply(context);
-      } catch (ElementValueParsingException evpe) {
-        throw evpe;
+      } catch (ElementValueException eve) {
+        throw eve;
       } catch (RuntimeException re) {
-        throw new ElementValueParsingException(re, context);
+        throw new ElementValueException(re, context);
       }
       if (saveTargetValue) context.saveValue(targetValue);
       return targetValue;
+    }
+
+    @Override
+    protected final T parse(final ElementParser<?>.@Nullable ParsingContextImpl parentContext, final XMLEvent event, final XMLEventReader reader, final AutoCloseable closer, final @Nullable ContainerElementParser targetContainerElementParser) throws ParsingException {
+      return parseImpl((parentContext != null) ? new ParsingContextImpl(parentContext, eventClass.cast(event)) : new ParsingContextImpl(eventClass.cast(event)), reader, closer, targetContainerElementParser);
     }
 
     @Override
@@ -1126,6 +1184,11 @@ public class XMLStreamParser<@NonNull T> {
           final Optional<? extends ContentParser<?,?>> childParser = findChildParserFor(event);
           if (childParser.isPresent()) {
             final Object childValue = childParser.get().parse(this, childParser.get().eventClass.cast(event), reader, closer, targetContainerElementParser);
+            if (childExceptionParsers.contains(childParser.get())) {
+              @SuppressWarnings("unchecked")
+              final ElementParser<? extends Exception> exceptionParser = (ElementParser<? extends Exception>)childParser.get();
+              throw new ExceptionElementException(exceptionParser.getTargetValueClass().cast(childValue), this);
+            }
             final List<Object> existingValues = childValues.get(childParser.get());
             if (existingValues != null) {
               existingValues.add(childValue);
@@ -1182,8 +1245,8 @@ public class XMLStreamParser<@NonNull T> {
       }
 
       @Override
-      public ElementValueParsingException createElementValueParsingException(final Exception cause) {
-        return new ElementValueParsingException(cause, this);
+      public ElementValueException createElementValueException(final Exception cause) {
+        return new ElementValueException(cause, this);
       }
 
     } // ElementParser.ParsingContextImpl
@@ -1198,9 +1261,9 @@ public class XMLStreamParser<@NonNull T> {
     }
 
     @Override
-    protected StartElement parse(final ElementParser<?>.@Nullable ParsingContextImpl parentContext, final XMLEvent event, final XMLEventReader reader, final AutoCloseable closer, final @Nullable ContainerElementParser targetContainerElementParser) throws ParsingException {
-      if (this == targetContainerElementParser) throw new TargetContainerElementFoundException((parentContext != null) ? new ParsingContextImpl(parentContext, eventClass.cast(event)) : new ParsingContextImpl(eventClass.cast(event)));
-      return super.parse(parentContext, event, reader, closer, targetContainerElementParser);
+    protected StartElement parseImpl(final ParsingContextImpl context, final XMLEventReader reader, final AutoCloseable closer, final @Nullable ContainerElementParser targetContainerElementParser) throws ParsingException {
+      if (this == targetContainerElementParser) throw new TargetContainerElementFoundException(context);
+      return super.parseImpl(context, reader, closer, targetContainerElementParser);
     }
 
   } // ContainerElementParser
@@ -1262,15 +1325,15 @@ public class XMLStreamParser<@NonNull T> {
    * <p>
    * XML uses a tree structure, and you use this class to define the schema for your XML from the bottom up, starting
    * with defining the "leaf" nodes, and then
-   * {@linkplain XMLStreamParser.SchemaBuilder.ChildElementListBuilder#addChild(QName, Class) referencing} those when
-   * defining the parent elements which utilize those leaves as their own children, and so on and so forth, working your
-   * way up to the root document element. All element definitions map their content to some type of
+   * {@linkplain XMLStreamParser.SchemaBuilder.ChildElementListBuilder#addChildValueElement(QName, Class) referencing}
+   * those when defining the parent elements which utilize those leaves as their own children, and so on and so forth,
+   * working your way up to the root document element. All element definitions map their content to some type of
    * {@linkplain XMLStreamParser#getTargetValueClass() target value}. This builder class allows you to define several
    * types of elements within your schema. The first are low-level leaf-type
    * {@linkplain #defineSimpleElement(String, Class, BiFunction, boolean) simple} elements, and the generic
    * {@linkplain #defineStringElement(String, boolean) string} version. Next, the most common, are
    * {@linkplain #defineElement(String, Class, Function) typed elements}, for binding to your own data model. And then,
-   * finally, are {@linkplain #defineWrapperElement(String, Class, QName[]) wrapper} and
+   * finally, are {@linkplain #defineWrapperElement(String, Class, Set, QName[]) wrapper} and
    * {@linkplain #defineContainerElementWithChildBuilder(String) container} elements, for housing the others and forming
    * the root of the document tree.
    * </p>
@@ -1307,10 +1370,6 @@ public class XMLStreamParser<@NonNull T> {
       final Set<ElementParser<?>> copy = (elementParsers != null) ? new CopyOnWriteArraySet<>(elementParsers) : new CopyOnWriteArraySet<>();
       this.elementParsers = (unmodifiable) ? Collections.unmodifiableSet(copy) : copy;
       return;
-    }
-
-    protected @Nullable Set<? extends ElementParser<? extends Exception>> getChildExceptionParsers(final QName elementName, final Class<?> targetValueClass) {
-      return null;
     }
 
     protected SB forkImpl(final @Nullable URI namespace, final boolean unmodifiable) {
@@ -1377,7 +1436,7 @@ public class XMLStreamParser<@NonNull T> {
       return schemaBuilderType.cast(this);
     }
 
-    protected final <@NonNull ET,PT extends ElementParser<?>> PT getParserWithTargetTypeAndOfParserType(final Class<ET> forElementTargetValueClass, final Class<PT> ofParserType, final QName forElementName) throws NoSuchElementException {
+    protected final <@NonNull ET,PT extends ElementParser<?>> PT getParserWithTargetTypeAndOfParserType(final Class<? extends ET> forElementTargetValueClass, final Class<? extends PT> ofParserType, final QName forElementName) throws NoSuchElementException {
       final List<ElementParser<?>> parsers = elementParsers.stream().filter((parser) -> ofParserType.isAssignableFrom(parser.getClass())).filter((parser) -> forElementName.equals(parser.getElementName())).filter((parser) -> forElementTargetValueClass.isAssignableFrom(parser.getTargetValueClass())).collect(Collectors.toList());
       if (parsers.isEmpty()) throw new NoSuchElementException("No '" + forElementName.getLocalPart() + "' element found with '" + forElementTargetValueClass + "' target value class");
       if (parsers.size() > 1) throw new NoSuchElementException("Multiple '" + forElementName.getLocalPart() + "' elements found with '" + forElementTargetValueClass + "' target value class");
@@ -1385,11 +1444,11 @@ public class XMLStreamParser<@NonNull T> {
     }
 
     @SuppressWarnings("unchecked")
-    protected final <@NonNull ET> ElementParser<? extends ET> getParserWithTargetType(final Class<ET> forElementTargetValueClass, final QName forElementName) throws NoSuchElementException {
+    protected final <@NonNull ET> ElementParser<ET> getParserWithTargetType(final Class<? extends ET> forElementTargetValueClass, final QName forElementName) throws NoSuchElementException {
       return getParserWithTargetTypeAndOfParserType(forElementTargetValueClass, (Class<ElementParser<ET>>)(Object)ElementParser.class, forElementName);
     }
 
-    protected final <PT extends ElementParser<@NonNull ?>> PT getParserOfParserType(final Class<PT> ofParserType, final QName forElementName) throws NoSuchElementException {
+    protected final <PT extends ElementParser<@NonNull ?>> PT getParserOfParserType(final Class<? extends PT> ofParserType, final QName forElementName) throws NoSuchElementException {
       final List<ElementParser<?>> parsers = elementParsers.stream().filter((parser) -> ofParserType.isAssignableFrom(parser.getClass())).filter((parser) -> forElementName.equals(parser.getElementName())).collect(Collectors.toList());
       if (parsers.isEmpty()) throw new NoSuchElementException("No '" + forElementName.getLocalPart() + "' element found");
       if (parsers.size() > 1) throw new NoSuchElementException("Multiple '" + forElementName.getLocalPart() + "' elements found");
@@ -1401,7 +1460,7 @@ public class XMLStreamParser<@NonNull T> {
     }
 
     @SuppressWarnings("unchecked")
-    protected final <@NonNull ET> @NonNull ElementParser<? extends ET>[] getParsersWithTargetType(final Class<ET> forElementTargetValueClass, final @NonNull QName @Nullable... forElementNames) throws NoSuchElementException {
+    protected final <@NonNull ET> @NonNull ElementParser<ET>[] getParsersWithTargetType(final Class<? extends ET> forElementTargetValueClass, final @NonNull QName @Nullable... forElementNames) throws NoSuchElementException {
       return ((forElementNames != null) ? Arrays.<QName> asList(forElementNames) : Collections.<QName> emptyList()).stream().<ElementParser<? extends ET>> map((forElementName) -> getParserWithTargetType(forElementTargetValueClass, forElementName)).toArray((n) -> (ElementParser<ET>[])java.lang.reflect.Array.newInstance(ElementParser.class, n));
     }
 
@@ -1414,9 +1473,9 @@ public class XMLStreamParser<@NonNull T> {
      * Importing a definition will <em>not</em> alter the namespace the element was originally defined in, or any of
      * it's other attributes. The imported definition will retain any child elements it was created with, though only
      * the imported element itself will be available for
-     * {@linkplain XMLStreamParser.SchemaBuilder.ChildElementListBuilder#addChild(QName, Class) reference} by other
-     * elements being defined within this schema, whereas the imported element's children will <em>not</em> be available
-     * to be referenced directly within this schema.
+     * {@linkplain XMLStreamParser.SchemaBuilder.ChildElementListBuilder#addChildValueElement(QName, Class) reference}
+     * by other elements being defined within this schema, whereas the imported element's children will <em>not</em> be
+     * available to be referenced directly within this schema.
      * </p>
      * 
      * @param <ET> The type of target value produced by the imported element.
@@ -1443,9 +1502,9 @@ public class XMLStreamParser<@NonNull T> {
      * Importing a definition will <em>not</em> alter the namespace the element was originally defined in, or any of
      * it's other attributes. The imported definition will retain any child elements it was created with, though only
      * the imported element itself will be available for
-     * {@linkplain XMLStreamParser.SchemaBuilder.ChildElementListBuilder#addChild(QName, Class) reference} by other
-     * elements being defined within this schema, whereas the imported element's children will <em>not</em> be available
-     * to be referenced directly within this schema.
+     * {@linkplain XMLStreamParser.SchemaBuilder.ChildElementListBuilder#addChildValueElement(QName, Class) reference}
+     * by other elements being defined within this schema, whereas the imported element's children will <em>not</em> be
+     * available to be referenced directly within this schema.
      * </p>
      * 
      * @param <ET> The type of target value produced by the imported element.
@@ -1473,9 +1532,9 @@ public class XMLStreamParser<@NonNull T> {
      * Importing a definition will <em>not</em> alter the namespace the element was originally defined in, or any of
      * it's other attributes. The imported definition will retain any child elements it was created with, though only
      * the imported element itself will be available for
-     * {@linkplain XMLStreamParser.SchemaBuilder.ChildElementListBuilder#addChild(QName, Class) reference} by other
-     * elements being defined within this schema, whereas the imported element's children will <em>not</em> be available
-     * to be referenced directly within this schema.
+     * {@linkplain XMLStreamParser.SchemaBuilder.ChildElementListBuilder#addChildValueElement(QName, Class) reference}
+     * by other elements being defined within this schema, whereas the imported element's children will <em>not</em> be
+     * available to be referenced directly within this schema.
      * </p>
      * 
      * @param fromSchemaBuilder The source schema to import the element from.
@@ -1499,9 +1558,9 @@ public class XMLStreamParser<@NonNull T> {
      * Importing a definition will <em>not</em> alter the namespace the element was originally defined in, or any of
      * it's other attributes. The imported definition will retain any child elements it was created with, though only
      * the imported element itself will be available for
-     * {@linkplain XMLStreamParser.SchemaBuilder.ChildElementListBuilder#addChild(QName, Class) reference} by other
-     * elements being defined within this schema, whereas the imported element's children will <em>not</em> be available
-     * to be referenced directly within this schema.
+     * {@linkplain XMLStreamParser.SchemaBuilder.ChildElementListBuilder#addChildValueElement(QName, Class) reference}
+     * by other elements being defined within this schema, whereas the imported element's children will <em>not</em> be
+     * available to be referenced directly within this schema.
      * </p>
      * 
      * @param fromSchemaBuilder The source schema to import the element from.
@@ -1658,7 +1717,7 @@ public class XMLStreamParser<@NonNull T> {
      */
     public final <@NonNull ET> SB defineElement(final String elementLocalName, final Class<ET> targetValueClass, final Function<ElementParsingContext<ET>,ET> targetValueFunction) {
       final QName elementName = qn(elementLocalName);
-      return addParser(new ElementParser<ET>(targetValueClass, elementName, targetValueFunction, false, getChildExceptionParsers(elementName, targetValueClass)));
+      return addParser(new ElementParser<ET>(targetValueClass, elementName, targetValueFunction, false, null));
     }
 
     /**
@@ -1695,9 +1754,16 @@ public class XMLStreamParser<@NonNull T> {
      * @see #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean)
      * @see #defineSimpleElement(String, Class, BiFunction, boolean)
      */
-    public final <@NonNull ET> ChildElementListBuilder<@NonNull ?> defineElementWithChildBuilder(final String elementLocalName, final Class<ET> targetValueClass, final Function<ElementParsingContext<ET>,ET> targetValueFunction, final boolean saveTargetValue) {
-      final QName elementName = qn(elementLocalName);
-      return new ChildElementListBuilder<ElementParser<?>>(ElementParser.WILDCARD_CLASS, (childParsers) -> addParser(new ElementParser<ET>(targetValueClass, elementName, targetValueFunction, saveTargetValue, getChildExceptionParsers(elementName, targetValueClass), childParsers)));
+    public final <@NonNull ET> ChildElementListBuilder defineElementWithChildBuilder(final String elementLocalName, final Class<ET> targetValueClass, final Function<ElementParsingContext<ET>,ET> targetValueFunction, final boolean saveTargetValue) {
+      return new ChildElementListBuilder(null, null) {
+
+        @Override
+        public SB completeDefinition() {
+          addParser(new ElementParser<ET>(targetValueClass, qn(elementLocalName), targetValueFunction, saveTargetValue, childExceptionParsers, childValueParsers));
+          return schemaBuilderType.cast(SchemaBuilder.this);
+        }
+
+      };
     }
 
     /**
@@ -1731,7 +1797,7 @@ public class XMLStreamParser<@NonNull T> {
      */
     public final <@NonNull ET> SB defineElementWithInjectedTarget(final String injectedElementLocalName, final Class<ET> targetValueClass, final Class<? extends ET> targetImplClass) {
       final QName injectedElementName = qn(injectedElementLocalName);
-      return addParser(new InjectedTargetElementParser<ET>(targetValueClass, targetImplClass, injectedElementName, false, getChildExceptionParsers(injectedElementName, targetValueClass), null, null));
+      return addParser(new InjectedTargetElementParser<ET>(targetValueClass, targetImplClass, injectedElementName, false, null, null, null));
     }
 
     /**
@@ -1800,9 +1866,16 @@ public class XMLStreamParser<@NonNull T> {
      * @see #defineElementWithInjectedTarget(String, Class, Class)
      * @see #defineElementWithChildBuilder(String, Class, Function, boolean)
      */
-    public final <@NonNull ET> InjectedTargetElementBuilder<ET,?> defineElementWithInjectedTargetBuilder(final String injectedElementLocalName, final Class<ET> targetValueClass, final Class<? extends ET> targetImplClass, final boolean saveTargetValue) {
-      final QName injectedElementName = qn(injectedElementLocalName);
-      return new InjectedTargetElementBuilder<>(ElementParser.WILDCARD_CLASS, (childParsers, injectionSpecs) -> addParser(new InjectedTargetElementParser<ET>(targetValueClass, targetImplClass, injectedElementName, saveTargetValue, getChildExceptionParsers(injectedElementName, targetValueClass), childParsers, injectionSpecs)));
+    public final <@NonNull ET> InjectedTargetElementBuilder<ET> defineElementWithInjectedTargetBuilder(final String injectedElementLocalName, final Class<ET> targetValueClass, final Class<? extends ET> targetImplClass, final boolean saveTargetValue) {
+      return new InjectedTargetElementBuilder<ET>(null, null) {
+
+        @Override
+        public SB completeDefinition() {
+          addParser(new InjectedTargetElementParser<ET>(targetValueClass, targetImplClass, qn(injectedElementLocalName), saveTargetValue, childExceptionParsers, childValueParsers, injectionSpecs));
+          return schemaBuilderType.cast(SchemaBuilder.this);
+        }
+
+      };
     }
 
     /**
@@ -1835,7 +1908,7 @@ public class XMLStreamParser<@NonNull T> {
      * @see #defineElementWithInjectedTarget(String, Class, Class)
      * @see #defineElementWithChildBuilder(String, Class, Function, boolean)
      */
-    public final <@NonNull ET> InjectedTargetElementBuilder<ET,?> defineElementWithInjectedTargetBuilder(final String injectedElementLocalName, final Class<ET> targetValueClass) {
+    public final <@NonNull ET> InjectedTargetElementBuilder<ET> defineElementWithInjectedTargetBuilder(final String injectedElementLocalName, final Class<ET> targetValueClass) {
       return defineElementWithInjectedTargetBuilder(injectedElementLocalName, targetValueClass, targetValueClass, false);
     }
 
@@ -1869,7 +1942,7 @@ public class XMLStreamParser<@NonNull T> {
      * @see #defineElementWithInjectedTarget(String, Class, Class)
      * @see #defineElementWithChildBuilder(String, Class, Function, boolean)
      */
-    public final <@NonNull ET> InjectedTargetElementBuilder<ET,?> defineElementWithInjectedTargetBuilder(final Class<ET> targetValueClass) {
+    public final <@NonNull ET> InjectedTargetElementBuilder<ET> defineElementWithInjectedTargetBuilder(final Class<ET> targetValueClass) {
       return defineElementWithInjectedTargetBuilder(targetValueClass.getSimpleName(), targetValueClass, targetValueClass, false);
     }
 
@@ -1882,13 +1955,14 @@ public class XMLStreamParser<@NonNull T> {
      * {@linkplain #getNamespace() current namespace} will be used).
      * @param targetValueClass The {@link Class} object for the type of target value which will be constructed when the
      * defined element is parsed.
+     * @param childExceptionElementNames The names of existing elements which generate exception values which will be
+     * added as children of the wrapper element.
      * @param wrappedElementNames The names of existing elements which will be the child elements wrapped by this one.
      * @return The {@link XMLStreamParser.SchemaBuilder SchemaBuilder} this method was invoked on.
      * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
      */
-    public final <@NonNull ET> SB defineWrapperElement(final String wrapperElementLocalName, final Class<ET> targetValueClass, final @NonNull QName @Nullable... wrappedElementNames) throws NoSuchElementException {
-      final QName wrapperElementName = qn(wrapperElementLocalName);
-      return addParser(new WrapperElementParser<ET>(targetValueClass, wrapperElementName, getChildExceptionParsers(wrapperElementName, targetValueClass), getParsersWithTargetType(targetValueClass, wrappedElementNames)));
+    public final <@NonNull ET> SB defineWrapperElement(final String wrapperElementLocalName, final Class<ET> targetValueClass, final @Nullable Set<QName> childExceptionElementNames, final @NonNull QName @Nullable... wrappedElementNames) throws NoSuchElementException {
+      return addParser(new WrapperElementParser<ET>(targetValueClass, qn(wrapperElementLocalName), (childExceptionElementNames != null) ? new CopyOnWriteArraySet<>(Arrays.asList(getParsersWithTargetType(Exception.class, childExceptionElementNames.stream().toArray((n) -> new QName[n])))) : null, getParsersWithTargetType(targetValueClass, wrappedElementNames)));
     }
 
     /**
@@ -1905,7 +1979,7 @@ public class XMLStreamParser<@NonNull T> {
      * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
      */
     public final <@NonNull ET> SB defineWrapperElement(final String wrapperElementLocalName, final Class<ET> targetValueClass, final @NonNull String @Nullable... wrappedElementNames) throws NoSuchElementException {
-      return defineWrapperElement(wrapperElementLocalName, targetValueClass, qns(wrappedElementNames));
+      return defineWrapperElement(wrapperElementLocalName, targetValueClass, null, qns(wrappedElementNames));
     }
 
     /**
@@ -1917,9 +1991,16 @@ public class XMLStreamParser<@NonNull T> {
      * @return A {@link XMLStreamParser.SchemaBuilder.ChildElementListBuilder ChildElementListBuilder} which you can use
      * to define which elements this definition will have as children.
      */
-    public final ChildElementListBuilder<@NonNull ?> defineContainerElementWithChildBuilder(final String containerElementLocalName) {
-      final QName containerElementName = qn(containerElementLocalName);
-      return new ChildElementListBuilder<ElementParser<?>>(ElementParser.WILDCARD_CLASS, (childParsers) -> addParser(new ContainerElementParser(containerElementName, getChildExceptionParsers(containerElementName, ElementParser.WILDCARD_CLASS), childParsers)));
+    public final ChildElementListBuilder defineContainerElementWithChildBuilder(final String containerElementLocalName) {
+      return new ChildElementListBuilder(null, null) {
+
+        @Override
+        public SB completeDefinition() {
+          addParser(new ContainerElementParser(qn(containerElementLocalName), childExceptionParsers, (!childValueParsers.isEmpty()) ? childValueParsers.stream().toArray((n) -> new ElementParser<?>[n]) : null));
+          return schemaBuilderType.cast(SchemaBuilder.this);
+        }
+
+      };
     }
 
     /**
@@ -1966,29 +2047,27 @@ public class XMLStreamParser<@NonNull T> {
     /**
      * This class is used during the definition of a parent element in order to construct a list of element definitions
      * which should become it's children.
-     *
-     * @param <PT> The type of elements being collected by this builder.
      */
-    public final class ChildElementListBuilder<@NonNull PT extends ElementParser<?>> {
-      protected final Class<PT> parserType;
-      protected final Consumer<PT[]> consumer;
-      protected final Set<PT> childParsers = new CopyOnWriteArraySet<>();
+    public abstract class ChildElementListBuilder {
+      protected final Set<ElementParser<Exception>> childExceptionParsers;
+      protected final Set<ElementParser<?>> childValueParsers;
 
       /**
-       * Construct a new <code>ChildElementListBuilder</code>.
+       * Construct a new {@link ChildElementListBuilder}.
        * 
-       * @param parserType The type of elements being collected by this builder.
-       * @param consumer The {@link Consumer} of the resulting list of child elements.
+       * @param childExceptionParsers Add some default child exception parsers.
+       * @param childValueParsers Add some default child value parsers.
        */
-      public ChildElementListBuilder(final Class<PT> parserType, final Consumer<PT[]> consumer) {
-        this.parserType = Objects.requireNonNull(parserType);
-        this.consumer = Objects.requireNonNull(consumer);
+      @SuppressWarnings("unchecked")
+      public ChildElementListBuilder(final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @Nullable Set<? extends ElementParser<?>> childValueParsers) {
+        this.childExceptionParsers = (childExceptionParsers != null) ? new CopyOnWriteArraySet<>((Set<ElementParser<Exception>>)childExceptionParsers) : new CopyOnWriteArraySet<>();
+        this.childValueParsers = (childValueParsers != null) ? new CopyOnWriteArraySet<>(childValueParsers) : new CopyOnWriteArraySet<>();
         return;
       }
 
       /**
        * <p>
-       * Add a referenced element definition as a child of the parent element currently being defined.
+       * Add a referenced element definition as a child value of the parent element currently being defined.
        * </p>
        * 
        * <p>
@@ -2002,18 +2081,18 @@ public class XMLStreamParser<@NonNull T> {
        * @return The {@link XMLStreamParser.SchemaBuilder.ChildElementListBuilder ChildElementListBuilder} this method
        * was invoked on.
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
-       * @see #addChild(String, Class)
-       * @see #addChild(QName)
-       * @see #addChild(String)
+       * @see #addChildValueElement(String, Class)
+       * @see #addChildValueElement(QName)
+       * @see #addChildValueElement(String)
        */
-      public <@NonNull CT> ChildElementListBuilder<PT> addChild(final QName elementName, final Class<CT> targetValueClass) throws NoSuchElementException {
-        childParsers.add(getParserWithTargetTypeAndOfParserType(targetValueClass, parserType, elementName));
+      public <@NonNull CT> ChildElementListBuilder addChildValueElement(final QName elementName, final Class<CT> targetValueClass) throws NoSuchElementException {
+        childValueParsers.add(getParserWithTargetType(targetValueClass, elementName));
         return this;
       }
 
       /**
        * <p>
-       * Add a referenced element definition as a child of the parent element currently being defined.
+       * Add a referenced element definition as a child value of the parent element currently being defined.
        * </p>
        * 
        * <p>
@@ -2028,17 +2107,17 @@ public class XMLStreamParser<@NonNull T> {
        * @return The {@link XMLStreamParser.SchemaBuilder.ChildElementListBuilder ChildElementListBuilder} this method
        * was invoked on.
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
-       * @see #addChild(QName, Class)
-       * @see #addChild(QName)
-       * @see #addChild(String)
+       * @see #addChildValueElement(QName, Class)
+       * @see #addChildValueElement(QName)
+       * @see #addChildValueElement(String)
        */
-      public <@NonNull CT> ChildElementListBuilder<PT> addChild(final String elementName, final Class<CT> targetValueClass) throws NoSuchElementException {
-        return addChild(qn(elementName), targetValueClass);
+      public <@NonNull CT> ChildElementListBuilder addChildValueElement(final String elementName, final Class<CT> targetValueClass) throws NoSuchElementException {
+        return addChildValueElement(qn(elementName), targetValueClass);
       }
 
       /**
        * <p>
-       * Add a referenced element definition as a child of the parent element currently being defined.
+       * Add a referenced element definition as a child value of the parent element currently being defined.
        * </p>
        * 
        * <p>
@@ -2049,18 +2128,18 @@ public class XMLStreamParser<@NonNull T> {
        * @return The {@link XMLStreamParser.SchemaBuilder.ChildElementListBuilder ChildElementListBuilder} this method
        * was invoked on.
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
-       * @see #addChild(QName, Class)
-       * @see #addChild(String, Class)
-       * @see #addChild(String)
+       * @see #addChildValueElement(QName, Class)
+       * @see #addChildValueElement(String, Class)
+       * @see #addChildValueElement(String)
        */
-      public ChildElementListBuilder<PT> addChild(final QName elementName) throws NoSuchElementException {
-        childParsers.add(getParserOfParserType(parserType, elementName));
+      public ChildElementListBuilder addChildValueElement(final QName elementName) throws NoSuchElementException {
+        childValueParsers.add(getParser(elementName));
         return this;
       }
 
       /**
        * <p>
-       * Add a referenced element definition as a child of the parent element currently being defined.
+       * Add a referenced element definition as a child value of the parent element currently being defined.
        * </p>
        * 
        * <p>
@@ -2072,12 +2151,170 @@ public class XMLStreamParser<@NonNull T> {
        * @return The {@link XMLStreamParser.SchemaBuilder.ChildElementListBuilder ChildElementListBuilder} this method
        * was invoked on.
        * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
-       * @see #addChild(QName, Class)
-       * @see #addChild(String, Class)
-       * @see #addChild(QName)
+       * @see #addChildValueElement(QName, Class)
+       * @see #addChildValueElement(String, Class)
+       * @see #addChildValueElement(QName)
        */
-      public ChildElementListBuilder<PT> addChild(final String elementName) throws NoSuchElementException {
-        return addChild(qn(elementName));
+      public ChildElementListBuilder addChildValueElement(final String elementName) throws NoSuchElementException {
+        return addChildValueElement(qn(elementName));
+      }
+
+      /**
+       * <p>
+       * Add a referenced element definition as a child exception of the parent element currently being defined.
+       * </p>
+       * 
+       * <p>
+       * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * <p>
+       * Your schema may include XML elements which represent errors or problems, for which you will likely create
+       * definitions mapping them to target values which are subclasses of {@link Exception}. You're free to
+       * {@linkplain #addChildValueElement(QName, Class) add such elements as a regular child} while defining a parent,
+       * and reference the generated {@link Exception} values while calculating the parent's target value, just as you
+       * would with any other type of child element. However, it's worth noting that doing so will <em>not</em> result
+       * in the generated exception actually being <em>thrown</em> at any point. Alternatively, if you use <em>this</em>
+       * method to add that element as a child <em>exception</em> element, instead of as a regular child <em>value</em>
+       * element, then an {@link ExceptionElementException} <em>will</em> be thrown if the parser encounters that child
+       * element. Additionally, if the element currently being defined is the parent of the
+       * {@linkplain XMLStreamParser#getTargetValueClass() target value} elements for a {@linkplain XMLStreamParser
+       * parser}, then the exception thrown in such a case will be {@linkplain RecoverableExceptionElementException
+       * recoverable}.
+       * </p>
+       * 
+       * @param <CT> The type of exception which will be constructed when the child element is parsed.
+       * @param elementName The name of the referenced element you wish to add as a child. The referenced element must
+       * generate an Exception value.
+       * @param exceptionClass The exception type produced by the referenced element definition you wish to add as a
+       * child.
+       * @return The {@link XMLStreamParser.SchemaBuilder.ChildElementListBuilder ChildElementListBuilder} this method
+       * was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #addChildExceptionElement(String, Class)
+       * @see #addChildExceptionElement(QName)
+       * @see #addChildExceptionElement(String)
+       */
+      public <@NonNull CT extends Exception> ChildElementListBuilder addChildExceptionElement(final QName elementName, final Class<CT> exceptionClass) throws NoSuchElementException {
+        childExceptionParsers.add(SchemaBuilder.this.<Exception> getParserWithTargetType(exceptionClass, elementName));
+        return this;
+      }
+
+      /**
+       * <p>
+       * Add a referenced element definition as a child exception of the parent element currently being defined.
+       * </p>
+       * 
+       * <p>
+       * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * <p>
+       * Your schema may include XML elements which represent errors or problems, for which you will likely create
+       * definitions mapping them to target values which are subclasses of {@link Exception}. You're free to
+       * {@linkplain #addChildValueElement(QName, Class) add such elements as a regular child} while defining a parent,
+       * and reference the generated {@link Exception} values while calculating the parent's target value, just as you
+       * would with any other type of child element. However, it's worth noting that doing so will <em>not</em> result
+       * in the generated exception actually being <em>thrown</em> at any point. Alternatively, if you use <em>this</em>
+       * method to add that element as a child <em>exception</em> element, instead of as a regular child <em>value</em>
+       * element, then an {@link ExceptionElementException} <em>will</em> be thrown if the parser encounters that child
+       * element. Additionally, if the element currently being defined is the parent of the
+       * {@linkplain XMLStreamParser#getTargetValueClass() target value} elements for a {@linkplain XMLStreamParser
+       * parser}, then the exception thrown in such a case will be {@linkplain RecoverableExceptionElementException
+       * recoverable}.
+       * </p>
+       * 
+       * @param <CT> The type of exception which will be constructed when the child element is parsed.
+       * @param elementName The {@linkplain QName#getLocalPart() local name} of the referenced element you wish to add
+       * as a child (the {@linkplain XMLStreamParser.SchemaBuilder#getNamespace() current namespace} will be used). The
+       * referenced element must generate an Exception value.
+       * @param exceptionClass The exception type produced by the referenced element definition you wish to add as a
+       * child.
+       * @return The {@link XMLStreamParser.SchemaBuilder.ChildElementListBuilder ChildElementListBuilder} this method
+       * was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #addChildExceptionElement(QName, Class)
+       * @see #addChildExceptionElement(QName)
+       * @see #addChildExceptionElement(String)
+       */
+      public <@NonNull CT extends Exception> ChildElementListBuilder addChildExceptionElement(final String elementName, final Class<CT> exceptionClass) throws NoSuchElementException {
+        return addChildExceptionElement(qn(elementName), exceptionClass);
+      }
+
+      /**
+       * <p>
+       * Add a referenced element definition as a child exception of the parent element currently being defined.
+       * </p>
+       * 
+       * <p>
+       * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * <p>
+       * Your schema may include XML elements which represent errors or problems, for which you will likely create
+       * definitions mapping them to target values which are subclasses of {@link Exception}. You're free to
+       * {@linkplain #addChildValueElement(QName, Class) add such elements as a regular child} while defining a parent,
+       * and reference the generated {@link Exception} values while calculating the parent's target value, just as you
+       * would with any other type of child element. However, it's worth noting that doing so will <em>not</em> result
+       * in the generated exception actually being <em>thrown</em> at any point. Alternatively, if you use <em>this</em>
+       * method to add that element as a child <em>exception</em> element, instead of as a regular child <em>value</em>
+       * element, then an {@link ExceptionElementException} <em>will</em> be thrown if the parser encounters that child
+       * element. Additionally, if the element currently being defined is the parent of the
+       * {@linkplain XMLStreamParser#getTargetValueClass() target value} elements for a {@linkplain XMLStreamParser
+       * parser}, then the exception thrown in such a case will be {@linkplain RecoverableExceptionElementException
+       * recoverable}.
+       * </p>
+       * 
+       * @param elementName The name of the referenced element you wish to add as a child. The referenced element must
+       * generate an Exception value.
+       * @return The {@link XMLStreamParser.SchemaBuilder.ChildElementListBuilder ChildElementListBuilder} this method
+       * was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #addChildExceptionElement(QName, Class)
+       * @see #addChildExceptionElement(String, Class)
+       * @see #addChildExceptionElement(String)
+       */
+      public ChildElementListBuilder addChildExceptionElement(final QName elementName) throws NoSuchElementException {
+        childExceptionParsers.add(getParserWithTargetType(Exception.class, elementName));
+        return this;
+      }
+
+      /**
+       * <p>
+       * Add a referenced element definition as a child exception of the parent element currently being defined.
+       * </p>
+       * 
+       * <p>
+       * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
+       * </p>
+       * 
+       * <p>
+       * Your schema may include XML elements which represent errors or problems, for which you will likely create
+       * definitions mapping them to target values which are subclasses of {@link Exception}. You're free to
+       * {@linkplain #addChildValueElement(QName, Class) add such elements as a regular child} while defining a parent,
+       * and reference the generated {@link Exception} values while calculating the parent's target value, just as you
+       * would with any other type of child element. However, it's worth noting that doing so will <em>not</em> result
+       * in the generated exception actually being <em>thrown</em> at any point. Alternatively, if you use <em>this</em>
+       * method to add that element as a child <em>exception</em> element, instead of as a regular child <em>value</em>
+       * element, then an {@link ExceptionElementException} <em>will</em> be thrown if the parser encounters that child
+       * element. Additionally, if the element currently being defined is the parent of the
+       * {@linkplain XMLStreamParser#getTargetValueClass() target value} elements for a {@linkplain XMLStreamParser
+       * parser}, then the exception thrown in such a case will be {@linkplain RecoverableExceptionElementException
+       * recoverable}.
+       * </p>
+       * 
+       * @param elementName The {@linkplain QName#getLocalPart() local name} of the referenced element you wish to add
+       * as a child (the {@linkplain XMLStreamParser.SchemaBuilder#getNamespace() current namespace} will be used). The
+       * referenced element must generate an Exception value.
+       * @return The {@link XMLStreamParser.SchemaBuilder.ChildElementListBuilder ChildElementListBuilder} this method
+       * was invoked on.
+       * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
+       * @see #addChildExceptionElement(QName, Class)
+       * @see #addChildExceptionElement(String, Class)
+       * @see #addChildExceptionElement(QName)
+       */
+      public ChildElementListBuilder addChildExceptionElement(final String elementName) throws NoSuchElementException {
+        return addChildExceptionElement(qn(elementName));
       }
 
       /**
@@ -2086,11 +2323,7 @@ public class XMLStreamParser<@NonNull T> {
        * 
        * @return The {@link XMLStreamParser.SchemaBuilder SchemaBuilder} being used to define the parent element.
        */
-      @SuppressWarnings("unchecked")
-      public SB completeDefinition() {
-        consumer.accept(childParsers.stream().toArray((n) -> (PT[])java.lang.reflect.Array.newInstance(parserType, n)));
-        return schemaBuilderType.cast(SchemaBuilder.this);
-      }
+      public abstract SB completeDefinition();
 
     } // ChildElementListBuilder
 
@@ -2102,24 +2335,68 @@ public class XMLStreamParser<@NonNull T> {
      * {@linkplain XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map) injection} should be performed.
      *
      * @param <ET> The type of target value which will be constructed when the injected element is parsed.
-     * @param <PT> The type of elements being collected by this builder.
      */
-    public final class InjectedTargetElementBuilder<@NonNull ET,@NonNull PT extends ElementParser<?>> {
-      protected final Class<PT> parserType;
-      protected final BiConsumer<Collection<PT>,Map<String,Function<ElementParsingContext<ET>,@Nullable Object>>> consumer;
-      protected final Set<PT> childParsers = new CopyOnWriteArraySet<>();
+    public abstract class InjectedTargetElementBuilder<@NonNull ET> extends ChildElementListBuilder {
       protected final Map<String,Function<ElementParsingContext<ET>,@Nullable Object>> injectionSpecs = new ConcurrentHashMap<>();
 
       /**
-       * Construct a new <code>InjectedTargetElementBuilder</code>.
+       * Construct a new {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder
+       * InjectedTargetElementBuilder}.
        * 
-       * @param parserType The type of elements being collected by this builder.
-       * @param consumer The {@link Consumer} of the resulting list of child elements and injection specifications.
+       * @param childExceptionParsers Add some default child exception parsers.
+       * @param childValueParsers Add some default child value parsers.
        */
-      public InjectedTargetElementBuilder(final Class<PT> parserType, BiConsumer<Collection<PT>,Map<String,Function<ElementParsingContext<ET>,@Nullable Object>>> consumer) {
-        this.parserType = Objects.requireNonNull(parserType);
-        this.consumer = Objects.requireNonNull(consumer);
+      public InjectedTargetElementBuilder(final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @Nullable Set<? extends ElementParser<?>> childValueParsers) {
+        super(childExceptionParsers, childValueParsers);
         return;
+      }
+
+      @Override
+      public <@NonNull CT> InjectedTargetElementBuilder<ET> addChildValueElement(final QName elementName, final Class<CT> targetValueClass) throws NoSuchElementException {
+        super.addChildValueElement(elementName, targetValueClass);
+        return this;
+      }
+
+      @Override
+      public <@NonNull CT> InjectedTargetElementBuilder<ET> addChildValueElement(final String elementName, final Class<CT> targetValueClass) throws NoSuchElementException {
+        super.addChildValueElement(elementName, targetValueClass);
+        return this;
+      }
+
+      @Override
+      public InjectedTargetElementBuilder<ET> addChildValueElement(final QName elementName) throws NoSuchElementException {
+        super.addChildValueElement(elementName);
+        return this;
+      }
+
+      @Override
+      public InjectedTargetElementBuilder<ET> addChildValueElement(final String elementName) throws NoSuchElementException {
+        super.addChildValueElement(elementName);
+        return this;
+      }
+
+      @Override
+      public <@NonNull CT extends Exception> InjectedTargetElementBuilder<ET> addChildExceptionElement(final QName elementName, final Class<CT> exceptionClass) throws NoSuchElementException {
+        super.addChildExceptionElement(elementName, exceptionClass);
+        return this;
+      }
+
+      @Override
+      public <@NonNull CT extends Exception> InjectedTargetElementBuilder<ET> addChildExceptionElement(final String elementName, final Class<CT> exceptionClass) throws NoSuchElementException {
+        super.addChildExceptionElement(elementName, exceptionClass);
+        return this;
+      }
+
+      @Override
+      public InjectedTargetElementBuilder<ET> addChildExceptionElement(final QName elementName) throws NoSuchElementException {
+        super.addChildExceptionElement(elementName);
+        return this;
+      }
+
+      @Override
+      public InjectedTargetElementBuilder<ET> addChildExceptionElement(final String elementName) throws NoSuchElementException {
+        super.addChildExceptionElement(elementName);
+        return this;
       }
 
       /**
@@ -2132,7 +2409,7 @@ public class XMLStreamParser<@NonNull T> {
        * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
        * this method was invoked on.
        */
-      public InjectedTargetElementBuilder<ET,PT> injectField(final String injectedFieldName, final Function<ElementParsingContext<ET>,@Nullable Object> injectionSpec) {
+      public InjectedTargetElementBuilder<ET> injectField(final String injectedFieldName, final Function<ElementParsingContext<ET>,@Nullable Object> injectionSpec) {
         injectionSpecs.put(injectedFieldName, injectionSpec);
         return this;
       }
@@ -2156,7 +2433,7 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectAttr(String, String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public InjectedTargetElementBuilder<ET,PT> injectAttr(final String injectedFieldName, final QName attrName, final Function<? super String,?> attrValueFunction) {
+      public InjectedTargetElementBuilder<ET> injectAttr(final String injectedFieldName, final QName attrName, final Function<? super String,?> attrValueFunction) {
         injectionSpecs.put(injectedFieldName, (ctx) -> {
           final @Nullable String attrValue = ctx.getAttrOrNull(attrName);
           return (attrValue != null) ? attrValueFunction.apply(attrValue) : null;
@@ -2184,7 +2461,7 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectAttr(String, String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public InjectedTargetElementBuilder<ET,PT> injectAttr(final String injectedFieldName, final String attrName, final Function<? super String,?> attrValueFunction) {
+      public InjectedTargetElementBuilder<ET> injectAttr(final String injectedFieldName, final String attrName, final Function<? super String,?> attrValueFunction) {
         return injectAttr(injectedFieldName, new QName(XMLConstants.NULL_NS_URI, attrName), attrValueFunction);
       }
 
@@ -2205,7 +2482,7 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectAttr(String, String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public InjectedTargetElementBuilder<ET,PT> injectAttr(final QName attrName, final Function<? super String,?> attrValueFunction) {
+      public InjectedTargetElementBuilder<ET> injectAttr(final QName attrName, final Function<? super String,?> attrValueFunction) {
         return injectAttr(attrName.getLocalPart(), attrName, attrValueFunction);
       }
 
@@ -2227,7 +2504,7 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectAttr(String, String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public InjectedTargetElementBuilder<ET,PT> injectAttr(final String attrName, final Function<? super String,?> attrValueFunction) {
+      public InjectedTargetElementBuilder<ET> injectAttr(final String attrName, final Function<? super String,?> attrValueFunction) {
         return injectAttr(attrName, new QName(XMLConstants.NULL_NS_URI, attrName), attrValueFunction);
       }
 
@@ -2248,7 +2525,7 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectAttr(String, String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public InjectedTargetElementBuilder<ET,PT> injectAttr(final String injectedFieldName, final QName attrName) {
+      public InjectedTargetElementBuilder<ET> injectAttr(final String injectedFieldName, final QName attrName) {
         injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getAttrOrNull(attrName));
         return this;
       }
@@ -2271,7 +2548,7 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectAttr(String, QName)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public InjectedTargetElementBuilder<ET,PT> injectAttr(final String injectedFieldName, final String attrName) {
+      public InjectedTargetElementBuilder<ET> injectAttr(final String injectedFieldName, final String attrName) {
         return injectAttr(injectedFieldName, new QName(XMLConstants.NULL_NS_URI, attrName));
       }
 
@@ -2303,8 +2580,8 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectChildObject(String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public <@NonNull CT,@NonNull IT> InjectedTargetElementBuilder<ET,PT> injectChildObject(final String injectedFieldName, final QName childElementName, final Class<CT> childElementTargetValueClass, final Class<IT> injectedValueClass, final Function<? super CT,? extends IT> injectedValueFunction) throws NoSuchElementException {
-        childParsers.add(getParserWithTargetTypeAndOfParserType(childElementTargetValueClass, parserType, childElementName));
+      public <@NonNull CT,@NonNull IT> InjectedTargetElementBuilder<ET> injectChildObject(final String injectedFieldName, final QName childElementName, final Class<CT> childElementTargetValueClass, final Class<IT> injectedValueClass, final Function<? super CT,? extends IT> injectedValueFunction) throws NoSuchElementException {
+        childValueParsers.add(getParserWithTargetType(childElementTargetValueClass, childElementName));
         injectionSpecs.put(injectedFieldName, (ctx) -> {
           final @Nullable CT childValue = ctx.getChildValueOrNull(childElementName, childElementTargetValueClass);
           return (childValue != null) ? injectedValueFunction.apply(childValue) : null;
@@ -2334,9 +2611,9 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectChildObject(String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public InjectedTargetElementBuilder<ET,PT> injectChildObject(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
-        final PT childElementParser = getParserOfParserType(parserType, childElementName);
-        childParsers.add(childElementParser);
+      public InjectedTargetElementBuilder<ET> injectChildObject(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
+        final ElementParser<?> childElementParser = getParser(childElementName);
+        childValueParsers.add(childElementParser);
         injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValueOrNull(childElementName, childElementParser.getTargetValueClass()));
         return this;
       }
@@ -2365,7 +2642,7 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectChildObject(String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public InjectedTargetElementBuilder<ET,PT> injectChildObject(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
+      public InjectedTargetElementBuilder<ET> injectChildObject(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
         return injectChildObject(injectedFieldName, qn(childElementName));
       }
 
@@ -2391,7 +2668,7 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectChildObject(String, String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public InjectedTargetElementBuilder<ET,PT> injectChildObject(final String childElementName) throws NoSuchElementException {
+      public InjectedTargetElementBuilder<ET> injectChildObject(final String childElementName) throws NoSuchElementException {
         return injectChildObject(childElementName, qn(childElementName));
       }
 
@@ -2422,8 +2699,8 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectChildArray(String, String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public <@NonNull CT,@NonNull IT> InjectedTargetElementBuilder<ET,PT> injectChildArray(final String injectedFieldName, final QName childElementName, final Class<CT> childElementTargetValueClass, final Class<IT> injectedValueClass, final Function<? super CT,? extends IT> injectedValueFunction) throws NoSuchElementException {
-        childParsers.add(getParserWithTargetTypeAndOfParserType(childElementTargetValueClass, parserType, childElementName));
+      public <@NonNull CT,@NonNull IT> InjectedTargetElementBuilder<ET> injectChildArray(final String injectedFieldName, final QName childElementName, final Class<CT> childElementTargetValueClass, final Class<IT> injectedValueClass, final Function<? super CT,? extends IT> injectedValueFunction) throws NoSuchElementException {
+        childValueParsers.add(getParserWithTargetType(childElementTargetValueClass, childElementName));
         injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValues(childElementName, childElementTargetValueClass).map(injectedValueFunction).toArray((n) -> (Object[])java.lang.reflect.Array.newInstance(injectedValueClass, n)));
         return this;
       }
@@ -2449,9 +2726,9 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectChildArray(String, String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public InjectedTargetElementBuilder<ET,PT> injectChildArray(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
-        final PT childElementParser = getParserOfParserType(parserType, childElementName);
-        childParsers.add(childElementParser);
+      public InjectedTargetElementBuilder<ET> injectChildArray(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
+        final ElementParser<?> childElementParser = getParser(childElementName);
+        childValueParsers.add(childElementParser);
         injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValues(childElementName, childElementParser.getTargetValueClass()).toArray((n) -> (Object[])java.lang.reflect.Array.newInstance(childElementParser.getTargetValueClass(), n)));
         return this;
       }
@@ -2479,7 +2756,7 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectChildArray(String, QName)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public InjectedTargetElementBuilder<ET,PT> injectChildArray(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
+      public InjectedTargetElementBuilder<ET> injectChildArray(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
         return injectChildArray(injectedFieldName, qn(childElementName));
       }
 
@@ -2510,8 +2787,8 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectChildList(String, String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public <@NonNull CT,@NonNull IT> InjectedTargetElementBuilder<ET,PT> injectChildList(final String injectedFieldName, final QName childElementName, final Class<CT> childElementTargetValueClass, final Class<IT> injectedValueClass, final Function<? super CT,? extends IT> injectedValueFunction) throws NoSuchElementException {
-        childParsers.add(getParserWithTargetTypeAndOfParserType(childElementTargetValueClass, parserType, childElementName));
+      public <@NonNull CT,@NonNull IT> InjectedTargetElementBuilder<ET> injectChildList(final String injectedFieldName, final QName childElementName, final Class<CT> childElementTargetValueClass, final Class<IT> injectedValueClass, final Function<? super CT,? extends IT> injectedValueFunction) throws NoSuchElementException {
+        childValueParsers.add(getParserWithTargetType(childElementTargetValueClass, childElementName));
         injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValues(childElementName, childElementTargetValueClass).map(injectedValueFunction).collect(Collectors.toList()));
         return this;
       }
@@ -2537,9 +2814,9 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectChildList(String, String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public InjectedTargetElementBuilder<ET,PT> injectChildList(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
-        final PT childElementParser = getParserOfParserType(parserType, childElementName);
-        childParsers.add(childElementParser);
+      public InjectedTargetElementBuilder<ET> injectChildList(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
+        final ElementParser<?> childElementParser = getParser(childElementName);
+        childValueParsers.add(childElementParser);
         injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValues(childElementName, childElementParser.getTargetValueClass()).collect(Collectors.toList()));
         return this;
       }
@@ -2567,7 +2844,7 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectChildList(String, QName)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public InjectedTargetElementBuilder<ET,PT> injectChildList(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
+      public InjectedTargetElementBuilder<ET> injectChildList(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
         return injectChildList(injectedFieldName, qn(childElementName));
       }
 
@@ -2598,8 +2875,8 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectChildSet(String, String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public <@NonNull CT,@NonNull IT> InjectedTargetElementBuilder<ET,PT> injectChildSet(final String injectedFieldName, final QName childElementName, final Class<CT> childElementTargetValueClass, final Class<IT> injectedValueClass, final Function<? super CT,? extends IT> injectedValueFunction) throws NoSuchElementException {
-        childParsers.add(getParserWithTargetTypeAndOfParserType(childElementTargetValueClass, parserType, childElementName));
+      public <@NonNull CT,@NonNull IT> InjectedTargetElementBuilder<ET> injectChildSet(final String injectedFieldName, final QName childElementName, final Class<CT> childElementTargetValueClass, final Class<IT> injectedValueClass, final Function<? super CT,? extends IT> injectedValueFunction) throws NoSuchElementException {
+        childValueParsers.add(getParserWithTargetType(childElementTargetValueClass, childElementName));
         injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValues(childElementName, childElementTargetValueClass).map(injectedValueFunction).collect(Collectors.toSet()));
         return this;
       }
@@ -2625,9 +2902,9 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectChildSet(String, String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public InjectedTargetElementBuilder<ET,PT> injectChildSet(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
-        final PT childElementParser = getParserOfParserType(parserType, childElementName);
-        childParsers.add(childElementParser);
+      public InjectedTargetElementBuilder<ET> injectChildSet(final String injectedFieldName, final QName childElementName) throws NoSuchElementException {
+        final ElementParser<?> childElementParser = getParser(childElementName);
+        childValueParsers.add(childElementParser);
         injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValues(childElementName, childElementParser.getTargetValueClass()).collect(Collectors.toSet()));
         return this;
       }
@@ -2655,7 +2932,7 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectChildSet(String, QName)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public InjectedTargetElementBuilder<ET,PT> injectChildSet(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
+      public InjectedTargetElementBuilder<ET> injectChildSet(final String injectedFieldName, final String childElementName) throws NoSuchElementException {
         return injectChildSet(injectedFieldName, qn(childElementName));
       }
 
@@ -2688,7 +2965,7 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectSavedObject(String, String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public <@NonNull ST,@NonNull IT> InjectedTargetElementBuilder<ET,PT> injectSavedObject(final String injectedFieldName, final QName savedElementName, final Class<ST> savedElementTargetValueClass, final Class<IT> injectedValueClass, final Function<? super ST,? extends IT> injectedValueFunction) throws NoSuchElementException {
+      public <@NonNull ST,@NonNull IT> InjectedTargetElementBuilder<ET> injectSavedObject(final String injectedFieldName, final QName savedElementName, final Class<ST> savedElementTargetValueClass, final Class<IT> injectedValueClass, final Function<? super ST,? extends IT> injectedValueFunction) throws NoSuchElementException {
         injectionSpecs.put(injectedFieldName, (ctx) -> {
           final @Nullable ST savedValue = ctx.getSavedValueOrNull(savedElementName, savedElementTargetValueClass);
           return (savedValue != null) ? injectedValueFunction.apply(savedValue) : null;
@@ -2719,7 +2996,7 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectSavedObject(String, String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public InjectedTargetElementBuilder<ET,PT> injectSavedObject(final String injectedFieldName, final QName savedElementName) throws NoSuchElementException {
+      public InjectedTargetElementBuilder<ET> injectSavedObject(final String injectedFieldName, final QName savedElementName) throws NoSuchElementException {
         injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getSavedValueOrNull(savedElementName, getParser(savedElementName).getTargetValueClass()));
         return this;
       }
@@ -2747,7 +3024,7 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectSavedObject(String, QName)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public InjectedTargetElementBuilder<ET,PT> injectSavedObject(final String injectedFieldName, final String savedElementName) throws NoSuchElementException {
+      public InjectedTargetElementBuilder<ET> injectSavedObject(final String injectedFieldName, final String savedElementName) throws NoSuchElementException {
         return injectSavedObject(injectedFieldName, qn(savedElementName));
       }
 
@@ -2781,7 +3058,7 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectSavedArray(String, String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public <@NonNull ST,@NonNull IT> InjectedTargetElementBuilder<ET,PT> injectSavedArray(final String injectedFieldName, final QName savedElementName, final Class<ST> savedElementTargetValueClass, final Class<IT> injectedValueClass, final Function<? super ST,? extends IT> injectedValueFunction) throws NoSuchElementException {
+      public <@NonNull ST,@NonNull IT> InjectedTargetElementBuilder<ET> injectSavedArray(final String injectedFieldName, final QName savedElementName, final Class<ST> savedElementTargetValueClass, final Class<IT> injectedValueClass, final Function<? super ST,? extends IT> injectedValueFunction) throws NoSuchElementException {
         injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getSavedValues(savedElementName, savedElementTargetValueClass).map(injectedValueFunction).toArray((n) -> (Object[])java.lang.reflect.Array.newInstance(injectedValueClass, n)));
         return this;
       }
@@ -2810,8 +3087,8 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectSavedArray(String, String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public InjectedTargetElementBuilder<ET,PT> injectSavedArray(final String injectedFieldName, final QName savedElementName) throws NoSuchElementException {
-        final PT savedElementParser = getParserOfParserType(parserType, savedElementName);
+      public InjectedTargetElementBuilder<ET> injectSavedArray(final String injectedFieldName, final QName savedElementName) throws NoSuchElementException {
+        final ElementParser<?> savedElementParser = getParser(savedElementName);
         injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getSavedValues(savedElementName, savedElementParser.getTargetValueClass()).toArray((n) -> (Object[])java.lang.reflect.Array.newInstance(savedElementParser.getTargetValueClass(), n)));
         return this;
       }
@@ -2840,7 +3117,7 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectSavedArray(String, QName)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public InjectedTargetElementBuilder<ET,PT> injectSavedArray(final String injectedFieldName, final String savedElementName) throws NoSuchElementException {
+      public InjectedTargetElementBuilder<ET> injectSavedArray(final String injectedFieldName, final String savedElementName) throws NoSuchElementException {
         return injectSavedArray(injectedFieldName, qn(savedElementName));
       }
 
@@ -2873,7 +3150,7 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectSavedList(String, String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public <@NonNull ST,@NonNull IT> InjectedTargetElementBuilder<ET,PT> injectSavedList(final String injectedFieldName, final QName savedElementName, final Class<ST> savedElementTargetValueClass, final Class<IT> injectedValueClass, final Function<? super ST,? extends IT> injectedValueFunction) throws NoSuchElementException {
+      public <@NonNull ST,@NonNull IT> InjectedTargetElementBuilder<ET> injectSavedList(final String injectedFieldName, final QName savedElementName, final Class<ST> savedElementTargetValueClass, final Class<IT> injectedValueClass, final Function<? super ST,? extends IT> injectedValueFunction) throws NoSuchElementException {
         injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValues(savedElementName, savedElementTargetValueClass).map(injectedValueFunction).collect(Collectors.toList()));
         return this;
       }
@@ -2901,7 +3178,7 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectSavedList(String, String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public InjectedTargetElementBuilder<ET,PT> injectSavedList(final String injectedFieldName, final QName savedElementName) throws NoSuchElementException {
+      public InjectedTargetElementBuilder<ET> injectSavedList(final String injectedFieldName, final QName savedElementName) throws NoSuchElementException {
         injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValues(savedElementName, getParser(savedElementName).getTargetValueClass()).collect(Collectors.toList()));
         return this;
       }
@@ -2929,7 +3206,7 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectSavedList(String, QName)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public InjectedTargetElementBuilder<ET,PT> injectSavedList(final String injectedFieldName, final String savedElementName) throws NoSuchElementException {
+      public InjectedTargetElementBuilder<ET> injectSavedList(final String injectedFieldName, final String savedElementName) throws NoSuchElementException {
         return injectSavedList(injectedFieldName, qn(savedElementName));
       }
 
@@ -2962,7 +3239,7 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectSavedSet(String, String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public <@NonNull ST,@NonNull IT> InjectedTargetElementBuilder<ET,PT> injectSavedSet(final String injectedFieldName, final QName savedElementName, final Class<ST> savedElementTargetValueClass, final Class<IT> injectedValueClass, final Function<? super ST,? extends IT> injectedValueFunction) throws NoSuchElementException {
+      public <@NonNull ST,@NonNull IT> InjectedTargetElementBuilder<ET> injectSavedSet(final String injectedFieldName, final QName savedElementName, final Class<ST> savedElementTargetValueClass, final Class<IT> injectedValueClass, final Function<? super ST,? extends IT> injectedValueFunction) throws NoSuchElementException {
         injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValues(savedElementName, savedElementTargetValueClass).map(injectedValueFunction).collect(Collectors.toSet()));
         return this;
       }
@@ -2990,7 +3267,7 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectSavedSet(String, String)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public InjectedTargetElementBuilder<ET,PT> injectSavedSet(final String injectedFieldName, final QName savedElementName) throws NoSuchElementException {
+      public InjectedTargetElementBuilder<ET> injectSavedSet(final String injectedFieldName, final QName savedElementName) throws NoSuchElementException {
         injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValues(savedElementName, getParser(savedElementName).getTargetValueClass()).collect(Collectors.toSet()));
         return this;
       }
@@ -3018,19 +3295,8 @@ public class XMLStreamParser<@NonNull T> {
        * @see #injectSavedSet(String, QName)
        * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
        */
-      public InjectedTargetElementBuilder<ET,PT> injectSavedSet(final String injectedFieldName, final String savedElementName) throws NoSuchElementException {
+      public InjectedTargetElementBuilder<ET> injectSavedSet(final String injectedFieldName, final String savedElementName) throws NoSuchElementException {
         return injectSavedSet(injectedFieldName, qn(savedElementName));
-      }
-
-      /**
-       * Compile the list of child element definitions and injection specifications which have been provided to this
-       * builder and use them to complete the definition of the parent element.
-       * 
-       * @return The {@link XMLStreamParser.SchemaBuilder SchemaBuilder} being used to define the parent element.
-       */
-      public SB completeDefinition() {
-        consumer.accept(childParsers, injectionSpecs);
-        return schemaBuilderType.cast(SchemaBuilder.this);
       }
 
     } // SchemaBuilder.InjectedTargetElementBuilder

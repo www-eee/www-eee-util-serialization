@@ -78,9 +78,9 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
     try {
       fault = SOAP_FACTORY.createFault(cast(ctx).getRequiredChildValue(REASON_ELEMENT_PARSER), cast(ctx).getRequiredChildValue(CODE_ELEMENT_PARSER));
     } catch (SOAPException soape) {
-      throw ctx.createElementValueParsingException(soape);
+      throw ctx.createElementValueException(soape);
     }
-    throw ctx.createElementValueParsingException(new SOAPFaultException(fault));
+    return new SOAPFaultException(fault);
   }, false, null, CODE_ELEMENT_PARSER, REASON_ELEMENT_PARSER);
 
   @SafeVarargs
@@ -103,8 +103,8 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
 
   protected static class HeaderElementParser extends ContainerElementParser {
 
-    public HeaderElementParser(final @NonNull ElementParser<?> @Nullable... childValueParsers) {
-      super(HEADER_QNAME, Collections.singleton(FAULT_ELEMENT_PARSER), childValueParsers);
+    public HeaderElementParser(final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @NonNull ElementParser<?> @Nullable... childValueParsers) {
+      super(HEADER_QNAME, childExceptionParsers, childValueParsers);
       return;
     }
 
@@ -112,8 +112,8 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
 
   protected static class BodyElementParser extends ContainerElementParser {
 
-    public BodyElementParser(final @NonNull ElementParser<?> @Nullable... childValueParsers) {
-      super(BODY_QNAME, Collections.singleton(FAULT_ELEMENT_PARSER), childValueParsers);
+    public BodyElementParser(final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @NonNull ElementParser<?> @Nullable... childValueParsers) {
+      super(BODY_QNAME, childExceptionParsers, childValueParsers);
       return;
     }
 
@@ -122,12 +122,12 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
   protected static class EnvelopeElementParser extends ContainerElementParser {
 
     public EnvelopeElementParser(final HeaderElementParser headerParser, final BodyElementParser bodyParser) {
-      super(ENVELOPE_QNAME, Collections.singleton(FAULT_ELEMENT_PARSER), headerParser, bodyParser);
+      super(ENVELOPE_QNAME, null, headerParser, bodyParser);
       return;
     }
 
     public EnvelopeElementParser(final BodyElementParser bodyParser) {
-      super(ENVELOPE_QNAME, Collections.singleton(FAULT_ELEMENT_PARSER), bodyParser);
+      super(ENVELOPE_QNAME, null, bodyParser);
       return;
     }
 
@@ -151,11 +151,6 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
     }
 
     @Override
-    protected @Nullable Set<? extends ElementParser<? extends Exception>> getChildExceptionParsers(final QName elementName, final Class<?> targetValueClass) {
-      return Collections.singleton(FAULT_ELEMENT_PARSER);
-    }
-
-    @Override
     protected SB forkImpl(final @Nullable URI namespace, final boolean unmodifiable) {
       return schemaBuilderType.cast(new SchemaBuilder<SB>(schemaBuilderType, namespace, elementParsers, unmodifiable));
     }
@@ -168,8 +163,16 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
      * ChildElementListBuilder} which you can use to define which elements the <code>Header</code> will have as
      * children.
      */
-    public final ChildElementListBuilder<@NonNull ?> defineHeaderElementWithChildBuilder() {
-      return new ChildElementListBuilder<ElementParser<?>>(ElementParser.WILDCARD_CLASS, (childParsers) -> addParser(new HeaderElementParser(childParsers)));
+    public final ChildElementListBuilder defineHeaderElementWithChildBuilder() {
+      return new ChildElementListBuilder(Collections.singleton(FAULT_ELEMENT_PARSER), null) {
+
+        @Override
+        public SB completeDefinition() {
+          addParser(new HeaderElementParser(childExceptionParsers, (!childValueParsers.isEmpty()) ? childValueParsers.stream().toArray((n) -> new ElementParser<?>[n]) : null));
+          return schemaBuilderType.cast(SchemaBuilder.this);
+        }
+
+      };
     }
 
     /**
@@ -184,7 +187,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
      * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
      */
     public final <@NonNull CT> SB defineBodyElement(final Class<CT> childElementTargetValueClass, final QName childElementName) throws NoSuchElementException {
-      return addParser(new BodyElementParser(getParserWithTargetType(childElementTargetValueClass, childElementName)));
+      return addParser(new BodyElementParser(Collections.singleton(FAULT_ELEMENT_PARSER), getParserWithTargetType(childElementTargetValueClass, childElementName)));
     }
 
     /**
@@ -196,7 +199,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
      * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
      */
     public final SB defineBodyElement(final QName childElementName) throws NoSuchElementException {
-      return addParser(new BodyElementParser(getParser(childElementName)));
+      return addParser(new BodyElementParser(Collections.singleton(FAULT_ELEMENT_PARSER), getParser(childElementName)));
     }
 
     /**
@@ -219,8 +222,16 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
      * @return A {@link net.www_eee.util.serialization.parser.xml.XMLStreamParser.SchemaBuilder.ChildElementListBuilder
      * ChildElementListBuilder} which you can use to define which elements the <code>Body</code> will have as children.
      */
-    public final ChildElementListBuilder<@NonNull ?> defineBodyElementWithChildBuilder() {
-      return new ChildElementListBuilder<ElementParser<?>>(ElementParser.WILDCARD_CLASS, (childParsers) -> addParser(new BodyElementParser(childParsers)));
+    public final ChildElementListBuilder defineBodyElementWithChildBuilder() {
+      return new ChildElementListBuilder(Collections.singleton(FAULT_ELEMENT_PARSER), null) {
+
+        @Override
+        public SB completeDefinition() {
+          addParser(new BodyElementParser(childExceptionParsers, (!childValueParsers.isEmpty()) ? childValueParsers.stream().toArray((n) -> new ElementParser<?>[n]) : null));
+          return schemaBuilderType.cast(SchemaBuilder.this);
+        }
+
+      };
     }
 
     /**
