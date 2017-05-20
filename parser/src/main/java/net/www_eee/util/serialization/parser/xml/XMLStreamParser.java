@@ -1255,8 +1255,8 @@ public class XMLStreamParser<@NonNull T> {
 
   protected static class ContainerElementParser extends ElementParser<StartElement> {
 
-    public ContainerElementParser(final QName elementName, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @NonNull ElementParser<?> @Nullable... childElementParsers) {
-      super(StartElement.class, elementName, (context) -> context.getStartElement(), false, childExceptionParsers, childElementParsers);
+    public ContainerElementParser(final QName elementName, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @NonNull ElementParser<?> @Nullable... childValueParsers) {
+      super(StartElement.class, elementName, (context) -> context.getStartElement(), false, childExceptionParsers, childValueParsers);
       return;
     }
 
