@@ -34,15 +34,15 @@ public class SOAPStreamParserTest {
    */
   @Rule
   public ExpectedException thrown = ExpectedException.none();
-  protected static final SOAPStreamParser<Departure> DEPARTURE_STREAM_PARSER;
-  static {
-    final SOAPStreamParser.SchemaBuilder<? extends SOAPStreamParser.SchemaBuilder<?>> schema = SOAPStreamParser.buildSchema(URI.create("http://www_eee.net/ns/"));
-    schema.defineSimpleElement("departureYear", Year.class, (ctx, value) -> Year.parse(value), true).defineHeaderElementWithChildBuilder().addChildValueElement("departureYear").completeDefinition().defineStringElement("departing").defineSimpleElement("departureMonthDay", MonthDay.class, MonthDay::parse);
-    schema.defineElementWithInjectedTargetBuilder("departure", Departure.class).injectChildObject("Departing", "departing").injectChildObject("DepartureMonthDay", "departureMonthDay").injectSavedObject("DepartureYear", "departureYear").completeDefinition();
-    // schema.defineElementWithChildBuilder("departure", Departure.class, (ctx) -> new Departure(ctx.getRequiredChildValue("departing", String.class), ctx.getRequiredChildValue("departureMonthDay", MonthDay.class).atYear(ctx.getRequiredSavedValue("departureYear", Year.class).getValue())), false).addChildValueElement("departing").addChildValueElement("departureMonthDay").completeDefinition();
-    schema.defineContainerElementWithChildBuilder("departures").addChildValueElement("departure").addChildExceptionElement(SOAPStreamParser.FAULT_QNAME).completeDefinition().defineBodyElement("departures");
-    DEPARTURE_STREAM_PARSER = schema.defineEnvelopeElement(true).createSOAPParser(Departure.class, "departures", "departure");
-  }
+  protected static final SOAPStreamParser<Departure> DEPARTURE_STREAM_PARSER = SOAPStreamParser.buildSchema(URI.create("http://www_eee.net/ns/"))
+      .defineSimpleElement("departureYear", Year.class, (ctx, value) -> Year.parse(value), true).defineHeaderElementWithChildBuilder().addChildValueElement("departureYear").completeDefinition()
+      .defineStringElement("departing")
+      .defineSimpleElement("departureMonthDay", MonthDay.class, MonthDay::parse)
+      .defineElementWithInjectedTargetBuilder("departure", Departure.class).injectChildObject("Departing", "departing").injectChildObject("DepartureMonthDay", "departureMonthDay").injectSavedObject("DepartureYear", "departureYear").completeDefinition()
+      // .defineElementWithChildBuilder("departure", Departure.class, (ctx) -> new Departure(ctx.getRequiredChildValue("departing", String.class), ctx.getRequiredChildValue("departureMonthDay", MonthDay.class).atYear(ctx.getRequiredSavedValue("departureYear", Year.class).getValue())), false).addChildValueElement("departing").addChildValueElement("departureMonthDay").completeDefinition()
+      .defineContainerElementWithChildBuilder("departures").addChildValueElement("departure").addChildExceptionElement(SOAPStreamParser.FAULT_QNAME).completeDefinition()
+      .defineBodyElement("departures")
+      .defineEnvelopeElement(true).createSOAPParser(Departure.class, "departures", "departure");
 
   /**
    * Test parsing the data while ignoring extra elements.

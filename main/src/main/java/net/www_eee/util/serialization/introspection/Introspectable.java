@@ -141,7 +141,9 @@ public interface Introspectable extends XMLSerializable {
      * @return A {@link Map} of non-{@linkplain Property#isEmpty() empty} {@link Property} values.
      */
     public Map<String,Property<?,?>> getValues() {
-      return Collections.unmodifiableMap(entrySet().stream().filter((entry) -> !entry.getValue().isEmpty()).collect(Collectors.<Map.Entry<String,Property<?,?>>,String,Property<?,?>,LinkedHashMap<String,Property<?,?>>> toMap(Map.Entry::getKey, Map.Entry::getValue, (u, v) -> u, LinkedHashMap::new)));
+      return Collections.unmodifiableMap(entrySet().stream()
+          .filter((entry) -> !entry.getValue().isEmpty())
+          .collect(Collectors.<Map.Entry<String,Property<?,?>>,String,Property<?,?>,LinkedHashMap<String,Property<?,?>>> toMap(Map.Entry::getKey, Map.Entry::getValue, (u, v) -> u, LinkedHashMap::new)));
     }
 
     /**
@@ -150,7 +152,9 @@ public interface Introspectable extends XMLSerializable {
      * @return A {@link Map} of non-{@linkplain Attr#isEmpty() empty} {@link Attr} values.
      */
     public Map<String,Attr<?>> getAttrs() {
-      return Collections.unmodifiableMap(filter(entrySet().stream(), Attr.WILDCARD_CLASS).filter((entry) -> !entry.getValue().isEmpty()).collect(Collectors.<Map.Entry<String,Attr<?>>,String,Attr<?>,LinkedHashMap<String,Attr<?>>> toMap(Map.Entry::getKey, Map.Entry::getValue, (u, v) -> u, LinkedHashMap::new)));
+      return Collections.unmodifiableMap(filter(entrySet().stream(), Attr.WILDCARD_CLASS)
+          .filter((entry) -> !entry.getValue().isEmpty())
+          .collect(Collectors.<Map.Entry<String,Attr<?>>,String,Attr<?>,LinkedHashMap<String,Attr<?>>> toMap(Map.Entry::getKey, Map.Entry::getValue, (u, v) -> u, LinkedHashMap::new)));
     }
 
     /**
@@ -159,7 +163,9 @@ public interface Introspectable extends XMLSerializable {
      * @return A {@link Map} of non-{@linkplain Child#isEmpty() empty} {@link Child} values.
      */
     public Map<String,Child<?,?>> getChildren() {
-      return Collections.unmodifiableMap(filter(entrySet().stream(), Child.WILDCARD_CLASS).filter((entry) -> !entry.getValue().isEmpty()).collect(Collectors.<Map.Entry<String,Child<?,?>>,String,Child<?,?>,LinkedHashMap<String,Child<?,?>>> toMap(Map.Entry::getKey, Map.Entry::getValue, (u, v) -> u, LinkedHashMap::new)));
+      return Collections.unmodifiableMap(filter(entrySet().stream(), Child.WILDCARD_CLASS)
+          .filter((entry) -> !entry.getValue().isEmpty())
+          .collect(Collectors.<Map.Entry<String,Child<?,?>>,String,Child<?,?>,LinkedHashMap<String,Child<?,?>>> toMap(Map.Entry::getKey, Map.Entry::getValue, (u, v) -> u, LinkedHashMap::new)));
     }
 
     @Override
@@ -169,7 +175,13 @@ public interface Introspectable extends XMLSerializable {
 
     @Override
     public boolean equals(final @Nullable Object other) {
-      return Optional.ofNullable(other).filter(Info.class::isInstance).map(Info.class::cast).filter((i) -> type.equals(i.type)).filter((i) -> Objects.equals(namespace, i.namespace)).filter((i) -> lateBound == i.lateBound).filter((i) -> props.equals(i.props)).isPresent();
+      return Optional.ofNullable(other).filter(Info.class::isInstance)
+          .map(Info.class::cast)
+          .filter((i) -> type.equals(i.type))
+          .filter((i) -> Objects.equals(namespace, i.namespace))
+          .filter((i) -> lateBound == i.lateBound)
+          .filter((i) -> props.equals(i.props))
+          .isPresent();
     }
 
     @Override
@@ -204,7 +216,12 @@ public interface Introspectable extends XMLSerializable {
           } else if (child.getKey().equals(valueNameFunction.apply(child.getValue()))) {
             propElementRequired = false; // We'll never nest two elements with the same name (common path when prop is a single complex child wrapped in a collection).
           } else {
-            propElementRequired = filter(entrySet().stream(), Child.WILDCARD_CLASS).<Info.Child<?,?>> map(Map.Entry::getValue).filter((someChild) -> someChild != child.getValue()).filter((otherChild) -> !otherChild.getValueTypeExtensions()).filter((otherChild) -> valueNameFunction.apply(otherChild).equals(valueNameFunction.apply(child.getValue()))).findAny().isPresent(); // Will the value name for this prop collide with that of any other prop?
+            propElementRequired = filter(entrySet().stream(), Child.WILDCARD_CLASS).<Info.Child<?,?>> map(Map.Entry::getValue)
+                .filter((someChild) -> someChild != child.getValue())
+                .filter((otherChild) -> !otherChild.getValueTypeExtensions())
+                .filter((otherChild) -> valueNameFunction.apply(otherChild).equals(valueNameFunction.apply(child.getValue())))
+                .findAny()
+                .isPresent(); // Will the value name for this prop collide with that of any other prop?
           }
 
           if (propElementRequired) streamWriter.writeStartElement(XMLConstants.DEFAULT_NS_PREFIX, child.getKey(), nsString);

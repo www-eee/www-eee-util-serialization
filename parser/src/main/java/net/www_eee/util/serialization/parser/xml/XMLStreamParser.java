@@ -28,11 +28,10 @@ import org.jooq.impl.*;
 
 
 /**
- * This class allows you to {@linkplain #buildSchema(URI) define a schema} which can then be used to
- * {@linkplain #parse(InputStream) parse} XML, providing you with a {@link Stream} of dynamically constructed target
- * values.
+ * A class allowing you to {@linkplain #parse(InputStream) parse} XML by iterating over a stream of target value objects
+ * which are dynamically constructed according to a {@linkplain #buildSchema(URI) schema} you provide.
  *
- * @param <T> The type of target values to be streamed.
+ * @param <T> The type of target values to be returned.
  */
 @NonNullByDefault
 public class XMLStreamParser<@NonNull T> {
@@ -53,17 +52,17 @@ public class XMLStreamParser<@NonNull T> {
   }
 
   /**
-   * Get the type of target values streamed by this parser.
+   * Get the type of target values returned by this parser.
    * 
-   * @return The type of target values streamed by this parser.
+   * @return The type of target values returned by this parser.
    */
   public Class<T> getTargetValueClass() {
     return targetValueClass;
   }
 
   /**
-   * Parse the XML provided by the supplied {@link InputStream}, providing an {@link Iterator} to retrieve the target
-   * values.
+   * Parse the XML provided by the supplied {@link InputStream}, providing an {@link Iterator} over target value objects
+   * dynamically constructed from the contents.
    * 
    * @param inputStream The {@link InputStream} to read XML from.
    * @return An {@link Iterator} to retrieve the target values, as defined by your {@linkplain #buildSchema(URI)
@@ -166,6 +165,7 @@ public class XMLStreamParser<@NonNull T> {
    * 
    * @param namespace The (optional) namespace used by your XML.
    * @return A new {@link SchemaBuilder}.
+   * @see SchemaBuilder
    */
   @SuppressWarnings("unchecked")
   public static SchemaBuilder<@NonNull ? extends SchemaBuilder<@NonNull ?>> buildSchema(final @Nullable URI namespace) {
@@ -179,7 +179,7 @@ public class XMLStreamParser<@NonNull T> {
 
   /**
    * <p>
-   * An interface providing information about an {@linkplain #getStartElement() element} currently being parsed,
+   * An interface providing information about the {@linkplain #getStartElement() element} currently being parsed,
    * including it's {@linkplain #getElementName() name}, {@linkplain #getTargetValueClass() target value type},
    * {@linkplain #getElementContext() context}, {@linkplain #getAttrs() attributes}, {@linkplain #getChildValues()
    * children}, etc. Generally, when the parser needs to calculate the {@linkplain #getTargetValueClass() target value}
@@ -190,8 +190,9 @@ public class XMLStreamParser<@NonNull T> {
    * 
    * <p>
    * In addition to information about the element currently being parsed, this interface also provides access to a
-   * global store of {@linkplain #getSavedValues(QName, Class) saved element values}, and the ability to construct
-   * values by {@linkplain #getInjectedValue(Class, Map) injecting} it's information into them.
+   * global store of {@linkplain #getSavedValues(QName, Class) saved element values}, the ability to construct objects
+   * through {@linkplain #getInjectedValue(Class, Map) injection}, and the ability to
+   * {@linkplain #createElementValueException(Exception) create exceptions}.
    * </p>
    * 
    * @param <T> The {@linkplain #getTargetValueClass() target value class} of the element being parsed.
@@ -229,11 +230,10 @@ public class XMLStreamParser<@NonNull T> {
     public StartElement getStartElement();
 
     /**
-     * Get the stack of {@link StartElement}'s from the document root element down to the element currently being
-     * parsed.
+     * Get the stack of {@link StartElement}'s from the element currently being parsed up to the document root.
      * 
-     * @return A {@link Deque} containing the stack of {@link StartElement}'s from the document root element down to the
-     * element currently being parsed.
+     * @return A {@link Deque} containing the stack of {@link StartElement}'s from the element currently being parsed up
+     * to the document root.
      */
     public Deque<StartElement> getElementContext();
 
@@ -245,7 +245,9 @@ public class XMLStreamParser<@NonNull T> {
      */
     @SuppressWarnings("unchecked")
     public default Map<QName,String> getAttrs() {
-      return Collections.unmodifiableMap(StreamSupport.stream(Spliterators.spliteratorUnknownSize((Iterator<Attribute>)getStartElement().getAttributes(), Spliterator.NONNULL | Spliterator.DISTINCT | Spliterator.IMMUTABLE), false).map((attr) -> new AbstractMap.SimpleImmutableEntry<>(attr.getName(), attr.getValue())).collect(Collectors.<Map.Entry<QName,String>,QName,String> toMap(Map.Entry::getKey, Map.Entry::getValue)));
+      return Collections.unmodifiableMap(StreamSupport.stream(Spliterators.spliteratorUnknownSize((Iterator<Attribute>)getStartElement().getAttributes(), Spliterator.NONNULL | Spliterator.DISTINCT | Spliterator.IMMUTABLE), false)
+          .map((attr) -> new AbstractMap.SimpleImmutableEntry<>(attr.getName(), attr.getValue()))
+          .collect(Collectors.<Map.Entry<QName,String>,QName,String> toMap(Map.Entry::getKey, Map.Entry::getValue)));
     }
 
     /**
@@ -513,7 +515,8 @@ public class XMLStreamParser<@NonNull T> {
      * @throws NoSuchElementException If there is no matching saved value.
      */
     public default <@NonNull ST> ST getRequiredSavedValue(final @Nullable QName savedElementName, final Class<ST> savedElementTargetValueClass) throws NoSuchElementException {
-      return getOptionalSavedValue(savedElementName, savedElementTargetValueClass).orElseThrow(() -> new NoSuchElementException("No " + ((savedElementName != null) ? "'" + savedElementName.getLocalPart() + "' " : "") + " saved element with '" + savedElementTargetValueClass.getSimpleName() + "' target value class found"));
+      return getOptionalSavedValue(savedElementName, savedElementTargetValueClass)
+          .orElseThrow(() -> new NoSuchElementException("No " + ((savedElementName != null) ? "'" + savedElementName.getLocalPart() + "' " : "") + " saved element with '" + savedElementTargetValueClass.getSimpleName() + "' target value class found"));
     }
 
     /**
@@ -551,7 +554,12 @@ public class XMLStreamParser<@NonNull T> {
      * @return A {@link Stream} of values (never <code>null</code>).
      */
     public default <@NonNull CT> Stream<CT> getChildValues(final @Nullable QName childElementName, final Class<CT> childElementTargetValueClass) {
-      return getChildValues().filter((entry) -> (childElementName == null) || (childElementName.equals(entry.getKey().getKey()))).filter((entry) -> childElementTargetValueClass.isAssignableFrom(entry.getKey().getValue())).<List<?>> map(Map.Entry::getValue).flatMap(List::stream).map((value) -> childElementTargetValueClass.cast(value));
+      return getChildValues()
+          .filter((entry) -> (childElementName == null) || (childElementName.equals(entry.getKey().getKey())))
+          .filter((entry) -> childElementTargetValueClass.isAssignableFrom(entry.getKey().getValue()))
+          .<List<?>> map(Map.Entry::getValue)
+          .flatMap(List::stream)
+          .map((value) -> childElementTargetValueClass.cast(value));
     }
 
     /**
@@ -643,7 +651,8 @@ public class XMLStreamParser<@NonNull T> {
      * @throws NoSuchElementException If there is no matching child value.
      */
     public default <@NonNull CT> CT getRequiredChildValue(final @Nullable QName childElementName, final Class<CT> childElementTargetValueClass) throws NoSuchElementException {
-      return getOptionalChildValue(childElementName, childElementTargetValueClass).orElseThrow(() -> new NoSuchElementException("No " + ((childElementName != null) ? "'" + childElementName.getLocalPart() + "' " : "") + " child element with '" + childElementTargetValueClass.getSimpleName() + "' target class found"));
+      return getOptionalChildValue(childElementName, childElementTargetValueClass)
+          .orElseThrow(() -> new NoSuchElementException("No " + ((childElementName != null) ? "'" + childElementName.getLocalPart() + "' " : "") + " child element with '" + childElementTargetValueClass.getSimpleName() + "' target class found"));
     }
 
     /**
@@ -671,11 +680,11 @@ public class XMLStreamParser<@NonNull T> {
      * 
      * <p>
      * The {@link Record} created to perform the injection will automatically be populated with a {@link Field} for each
-     * of the {@linkplain #getAttrs() attributes} and {@linkplain #getChildValues() child values} from the element
-     * currently being parsed (using the {@linkplain QName#getLocalPart() local name} as the injected
-     * {@linkplain Field#getName() field name} for each). Child values will be injected as an
-     * {@link java.lang.reflect.Array Array} in order to provide strong typing information for use by the
-     * {@link DefaultRecordMapper}. You can provide <code>injectionSpecs</code> to override this default behaviour.
+     * of the {@linkplain #getAttrs() attributes} and {@linkplain #getChildValues() child values} from this parsing
+     * context (using the {@linkplain QName#getLocalPart() local name} as the injected {@linkplain Field#getName() field
+     * name} for each). Child values will be injected as an {@link java.lang.reflect.Array Array} in order to provide
+     * strong typing information for use by the {@link DefaultRecordMapper} in performing data type conversions. You can
+     * provide <code>injectionSpecs</code> to override this default behaviour.
      * </p>
      * 
      * @param <IT> The type of object being injected.
@@ -718,11 +727,11 @@ public class XMLStreamParser<@NonNull T> {
      * 
      * <p>
      * The {@link Record} created to perform the injection will automatically be populated with a {@link Field} for each
-     * of the {@linkplain #getAttrs() attributes} and {@linkplain #getChildValues() child values} from the element
-     * currently being parsed (using the {@linkplain QName#getLocalPart() local name} as the injected
-     * {@linkplain Field#getName() field name} for each). Child values will be injected as an
-     * {@link java.lang.reflect.Array Array} in order to provide strong typing information for use by the
-     * {@link DefaultRecordMapper}. You can provide <code>injectionSpecs</code> to override this default behaviour.
+     * of the {@linkplain #getAttrs() attributes} and {@linkplain #getChildValues() child values} from this parsing
+     * context (using the {@linkplain QName#getLocalPart() local name} as the injected {@linkplain Field#getName() field
+     * name} for each). Child values will be injected as an {@link java.lang.reflect.Array Array} in order to provide
+     * strong typing information for use by the {@link DefaultRecordMapper} in performing data type conversions. You can
+     * provide <code>injectionSpecs</code> to override this default behaviour.
      * </p>
      * 
      * @param <IT> The type of object being injected.
@@ -737,7 +746,17 @@ public class XMLStreamParser<@NonNull T> {
     }
 
     /**
-     * Create an {@link ElementValueException}.
+     * <p>
+     * Create an {@link ElementValueException} from the supplied {@link Exception}.
+     * </p>
+     * 
+     * <p>
+     * If calculation of the {@linkplain XMLStreamParser#getTargetValueClass() target value} for your element generates
+     * a checked {@link Exception}, the {@link Function} you supply while
+     * {@linkplain XMLStreamParser.SchemaBuilder#defineElement(String, Class, java.util.function.Function) defining that
+     * element} can utilize this method for converting that into an {@link ElementValueException}
+     * ({@link RuntimeException}).
+     * </p>
      * 
      * @param cause The {@linkplain ElementValueException#getCause() cause}.
      * @return The created {@link ElementValueException}.
@@ -940,8 +959,8 @@ public class XMLStreamParser<@NonNull T> {
 
   /**
    * A special case of {@link ExceptionElementException ExceptionElementException}, thrown during
-   * {@linkplain XMLStreamParser#parse(InputStream) parsing} to indicate you can continue iterating over any subsequent
-   * target values.
+   * {@linkplain XMLStreamParser#parse(InputStream) parsing} to indicate that, even after it's been thrown, you can
+   * continue iterating over any subsequent target values.
    * 
    * @see XMLStreamParser#parse(InputStream)
    */
@@ -963,8 +982,9 @@ public class XMLStreamParser<@NonNull T> {
   /**
    * This exception is thrown to abort
    * {@linkplain XMLStreamParser.ContentParser#parse(XMLStreamParser.ElementParser.ParsingContextImpl, XMLEvent, XMLEventReader, AutoCloseable, ContainerElementParser)
-   * parsing} and return the current {@linkplain #getParsingContextImpl() parsing context} when a specified
-   * {@link ContainerElementParser} is encountered.
+   * parsing} and return the current {@linkplain #getParsingContextImpl() parsing context} when the specified
+   * {@link ContainerElementParser} is encountered, indicating the parser has reached the position in the content where
+   * it should begin to iterate over {@linkplain XMLStreamParser#getTargetValueClass() target values}.
    */
   private static class TargetContainerElementFoundException extends ElementParsingContextException {
 
@@ -1115,11 +1135,17 @@ public class XMLStreamParser<@NonNull T> {
     }
 
     private static final Stream<Map.Entry<ElementParser<?>,List<Object>>> getElementParserEntries(final Stream<? extends Map.Entry<? extends ContentParser<?,?>,List<Object>>> values) {
-      return values.filter((entry) -> ElementParser.class.isInstance(entry.getKey())).<Map.Entry<ElementParser<?>,List<Object>>> map((entry) -> new AbstractMap.SimpleImmutableEntry<>(ElementParser.class.cast(entry.getKey()), entry.getValue()));
+      return values
+          .filter((entry) -> ElementParser.class.isInstance(entry.getKey())).<Map.Entry<ElementParser<?>,List<Object>>> map((entry) -> new AbstractMap.SimpleImmutableEntry<>(ElementParser.class.cast(entry.getKey()), entry.getValue()));
     }
 
     private static final <@NonNull ET> Stream<ET> getElementValues(final Stream<? extends Map.Entry<? extends ContentParser<?,?>,List<Object>>> values, final @Nullable QName elementName, final Class<ET> targetValueClass) {
-      return getElementParserEntries(values).filter((entry) -> (elementName == null) || elementName.equals(entry.getKey().getElementName())).filter((entry) -> targetValueClass.isAssignableFrom(entry.getKey().getTargetValueClass())).map(Map.Entry::getValue).flatMap(List::stream).map(targetValueClass::cast);
+      return getElementParserEntries(values)
+          .filter((entry) -> (elementName == null) || elementName.equals(entry.getKey().getElementName()))
+          .filter((entry) -> targetValueClass.isAssignableFrom(entry.getKey().getTargetValueClass()))
+          .map(Map.Entry::getValue)
+          .flatMap(List::stream)
+          .map(targetValueClass::cast);
     }
 
     public final class ParsingContextImpl implements ElementParsingContext<T> {
@@ -1241,7 +1267,8 @@ public class XMLStreamParser<@NonNull T> {
 
       @Override
       public Stream<Map.Entry<Map.Entry<QName,Class<?>>,List<?>>> getChildValues() {
-        return getElementParserEntries(childValues.entrySet().stream()).map((entry) -> new AbstractMap.SimpleImmutableEntry<>(new AbstractMap.SimpleImmutableEntry<>(entry.getKey().getElementName(), entry.getKey().getTargetValueClass()), entry.getValue()));
+        return getElementParserEntries(childValues.entrySet().stream())
+            .map((entry) -> new AbstractMap.SimpleImmutableEntry<>(new AbstractMap.SimpleImmutableEntry<>(entry.getKey().getElementName(), entry.getKey().getTargetValueClass()), entry.getValue()));
       }
 
       @Override
@@ -1318,7 +1345,7 @@ public class XMLStreamParser<@NonNull T> {
 
   /**
    * <p>
-   * This class allows you to define the elements used within your XML documents and then
+   * This class allows you to define the elements used within your XML documents so that you can then
    * {@linkplain #createXMLParser(Class, Set, QName, QName[]) create a parser} for them.
    * </p>
    * 
@@ -1328,18 +1355,20 @@ public class XMLStreamParser<@NonNull T> {
    * {@linkplain XMLStreamParser.SchemaBuilder.ChildElementListBuilder#addChildValueElement(QName, Class) referencing}
    * those when defining the parent elements which utilize those leaves as their own children, and so on and so forth,
    * working your way up to the root document element. All element definitions map their content to some type of
-   * {@linkplain XMLStreamParser#getTargetValueClass() target value}. This builder class allows you to define several
-   * types of elements within your schema. The first are low-level leaf-type
-   * {@linkplain #defineSimpleElement(String, Class, BiFunction, boolean) simple} elements, and the generic
-   * {@linkplain #defineStringElement(String, boolean) string} version. Next, the most common, are
-   * {@linkplain #defineElement(String, Class, Function) typed elements}, for binding to your own data model. And then,
-   * finally, are {@linkplain #defineWrapperElement(String, Class, Set, QName[]) wrapper} and
-   * {@linkplain #defineContainerElementWithChildBuilder(String) container} elements, for housing the others and forming
-   * the root of the document tree.
+   * {@linkplain XMLStreamParser#getTargetValueClass() target value}, often using a {@link Function} you provide when
+   * defining them. This builder class allows you to define several types of elements within your schema. The first are
+   * low-level leaf-type {@linkplain #defineSimpleElement(String, Class, BiFunction, boolean) simple elements}, and
+   * their generic {@linkplain #defineStringElement(String, boolean) string version}. Next, the most common, are
+   * {@linkplain #defineElement(String, Class, Function) regular elements}, for binding to your own data model, which
+   * can also be {@linkplain #defineElementWithInjectedTarget(String, Class, Class) defined using injection to construct
+   * their values}. And then, finally, are {@linkplain #defineWrapperElement(String, Class, Set, QName[]) wrapper
+   * elements} and {@linkplain #defineContainerElementWithChildBuilder(String) container elements}, for housing the
+   * others and forming the root of the document tree.
    * </p>
    * 
    * <p>
-   * Any elements encountered while parsing which have not been defined within your schema will be silently ignored.
+   * Any elements encountered while parsing which have not been defined within your schema will be silently ignored (as
+   * per the 'X' in 'XML').
    * </p>
    *
    * <p>
@@ -1352,12 +1381,14 @@ public class XMLStreamParser<@NonNull T> {
    * <p>
    * Note that this API doesn't provide any way to define elements having mixed content, containing both
    * {@linkplain #defineSimpleElement(String, Class, BiFunction, boolean) child character data} and
-   * {@link #defineElementWithChildBuilder(String, Class, Function, boolean) child elements}. If your schema requires
-   * parsing those, you will need to write your own XMLStreamParser subclass and define those elements using the
-   * internal API.
+   * {@linkplain #defineElementWithChildBuilder(String, Class, Function, boolean) child elements}. If your schema
+   * requires parsing those, you will need to write your own XMLStreamParser subclass and define those elements using
+   * the internal API.
    * </p>
    * 
-   * @param <SB> The concrete class of schema builder being used.
+   * @param <SB> The concrete class of schema builder being used, which will be returned by all builder methods
+   * ({@link XMLStreamParser} subclasses will likely also extend this builder with additional methods to facilitate
+   * defining their own custom content elements).
    */
   public static class SchemaBuilder<@NonNull SB extends SchemaBuilder<@NonNull ?>> {
     protected final Class<? extends SB> schemaBuilderType;
@@ -1437,7 +1468,11 @@ public class XMLStreamParser<@NonNull T> {
     }
 
     protected final <@NonNull ET,PT extends ElementParser<?>> PT getParserWithTargetTypeAndOfParserType(final Class<? extends ET> forElementTargetValueClass, final Class<? extends PT> ofParserType, final QName forElementName) throws NoSuchElementException {
-      final List<ElementParser<?>> parsers = elementParsers.stream().filter((parser) -> ofParserType.isAssignableFrom(parser.getClass())).filter((parser) -> forElementName.equals(parser.getElementName())).filter((parser) -> forElementTargetValueClass.isAssignableFrom(parser.getTargetValueClass())).collect(Collectors.toList());
+      final List<ElementParser<?>> parsers = elementParsers.stream()
+          .filter((parser) -> ofParserType.isAssignableFrom(parser.getClass()))
+          .filter((parser) -> forElementName.equals(parser.getElementName()))
+          .filter((parser) -> forElementTargetValueClass.isAssignableFrom(parser.getTargetValueClass()))
+          .collect(Collectors.toList());
       if (parsers.isEmpty()) throw new NoSuchElementException("No '" + forElementName.getLocalPart() + "' element found with '" + forElementTargetValueClass + "' target value class");
       if (parsers.size() > 1) throw new NoSuchElementException("Multiple '" + forElementName.getLocalPart() + "' elements found with '" + forElementTargetValueClass + "' target value class");
       return ofParserType.cast(parsers.get(0));
@@ -1449,7 +1484,10 @@ public class XMLStreamParser<@NonNull T> {
     }
 
     protected final <PT extends ElementParser<@NonNull ?>> PT getParserOfParserType(final Class<? extends PT> ofParserType, final QName forElementName) throws NoSuchElementException {
-      final List<ElementParser<?>> parsers = elementParsers.stream().filter((parser) -> ofParserType.isAssignableFrom(parser.getClass())).filter((parser) -> forElementName.equals(parser.getElementName())).collect(Collectors.toList());
+      final List<ElementParser<?>> parsers = elementParsers.stream()
+          .filter((parser) -> ofParserType.isAssignableFrom(parser.getClass()))
+          .filter((parser) -> forElementName.equals(parser.getElementName()))
+          .collect(Collectors.toList());
       if (parsers.isEmpty()) throw new NoSuchElementException("No '" + forElementName.getLocalPart() + "' element found");
       if (parsers.size() > 1) throw new NoSuchElementException("Multiple '" + forElementName.getLocalPart() + "' elements found");
       return ofParserType.cast(parsers.get(0));
@@ -1461,7 +1499,9 @@ public class XMLStreamParser<@NonNull T> {
 
     @SuppressWarnings("unchecked")
     protected final <@NonNull ET> @NonNull ElementParser<ET>[] getParsersWithTargetType(final Class<? extends ET> forElementTargetValueClass, final @NonNull QName @Nullable... forElementNames) throws NoSuchElementException {
-      return ((forElementNames != null) ? Arrays.<QName> asList(forElementNames) : Collections.<QName> emptyList()).stream().<ElementParser<? extends ET>> map((forElementName) -> getParserWithTargetType(forElementTargetValueClass, forElementName)).toArray((n) -> (ElementParser<ET>[])java.lang.reflect.Array.newInstance(ElementParser.class, n));
+      return ((forElementNames != null) ? Arrays.<QName> asList(forElementNames) : Collections.<QName> emptyList()).stream()
+          .<ElementParser<? extends ET>> map((forElementName) -> getParserWithTargetType(forElementTargetValueClass, forElementName))
+          .toArray((n) -> (ElementParser<ET>[])java.lang.reflect.Array.newInstance(ElementParser.class, n));
     }
 
     /**
@@ -1947,8 +1987,18 @@ public class XMLStreamParser<@NonNull T> {
     }
 
     /**
+     * <p>
      * Define a "wrapper" element, which contains a single type of child element, and uses that child's target value as
      * it's own.
+     * </p>
+     * 
+     * <p>
+     * These are most often used by a parent element to distinguish between two child elements which are of the same
+     * name and type, but used for different purposes, for example, the "<code>Parent</code>" element using
+     * "<code>Home</code>" and "<code>Work</code>" wrapper elements to differentiate between multiple child
+     * "<code>Phone</code>" elements in
+     * <code>&lt;Parent&gt;&lt;Home&gt;&lt;Phone Number="x"/&gt;&lt;/Home&gt;&lt;Work&gt;&lt;Phone Number="y"/&gt;&lt;/Work&gt;&lt;/Parent&gt;</code>.
+     * </p>
      * 
      * @param <ET> The type of target value which will be provided when the defined element is parsed.
      * @param wrapperElementLocalName The {@linkplain QName#getLocalPart() local name} of the element being defined (the
@@ -1966,8 +2016,18 @@ public class XMLStreamParser<@NonNull T> {
     }
 
     /**
-     * Define a "wrapper" element, which contains a single child element, and uses that child's target value as it's
-     * own.
+     * <p>
+     * Define a "wrapper" element, which contains a single type of child element, and uses that child's target value as
+     * it's own.
+     * </p>
+     * 
+     * <p>
+     * These are most often used by a parent element to distinguish between two child elements which are of the same
+     * name and type, but used for different purposes, for example, the "<code>Parent</code>" element using
+     * "<code>Home</code>" and "<code>Work</code>" wrapper elements to differentiate between multiple child
+     * "<code>Phone</code>" elements in
+     * <code>&lt;Parent&gt;&lt;Home&gt;&lt;Phone Number="x"/&gt;&lt;/Home&gt;&lt;Work&gt;&lt;Phone Number="y"/&gt;&lt;/Work&gt;&lt;/Parent&gt;</code>.
+     * </p>
      * 
      * @param <ET> The type of target value which will be provided when the defined element is parsed.
      * @param wrapperElementLocalName The {@linkplain QName#getLocalPart() local name} of the element being defined (the
@@ -1983,8 +2043,15 @@ public class XMLStreamParser<@NonNull T> {
     }
 
     /**
-     * Define a "container" element, which don't calculate target values, and whose sole purpose is hosting other
+     * <p>
+     * Define a "container" element, which doesn't calculate a target value, and whose sole purpose is for hosting other
      * content elements found lower in the tree.
+     * </p>
+     * 
+     * <p>
+     * Normally, all of your parser's {@linkplain XMLStreamParser#getTargetValueClass() target element} parents will be
+     * defined as containers, which would minimally include at least the root document element definition.
+     * </p>
      * 
      * @param containerElementLocalName The {@linkplain QName#getLocalPart() local name} of the element being defined
      * (the {@linkplain #getNamespace() current namespace} will be used).
@@ -2045,8 +2112,9 @@ public class XMLStreamParser<@NonNull T> {
     }
 
     /**
-     * This class is used during the definition of a parent element in order to construct a list of element definitions
-     * which should become it's children.
+     * This class is used during the definition of a parent element in order to construct a list of definitions for
+     * {@linkplain #addChildValueElement(QName, Class) value} and {@linkplain #addChildExceptionElement(QName, Class)
+     * exception} elements which should become it's children.
      */
     public abstract class ChildElementListBuilder {
       protected final Set<ElementParser<Exception>> childExceptionParsers;
@@ -2067,7 +2135,7 @@ public class XMLStreamParser<@NonNull T> {
 
       /**
        * <p>
-       * Add a referenced element definition as a child value of the parent element currently being defined.
+       * Add a referenced element definition as a child of the parent element currently being defined.
        * </p>
        * 
        * <p>
@@ -2092,7 +2160,7 @@ public class XMLStreamParser<@NonNull T> {
 
       /**
        * <p>
-       * Add a referenced element definition as a child value of the parent element currently being defined.
+       * Add a referenced element definition as a child of the parent element currently being defined.
        * </p>
        * 
        * <p>
@@ -2117,7 +2185,7 @@ public class XMLStreamParser<@NonNull T> {
 
       /**
        * <p>
-       * Add a referenced element definition as a child value of the parent element currently being defined.
+       * Add a referenced element definition as a child of the parent element currently being defined.
        * </p>
        * 
        * <p>
@@ -2139,7 +2207,7 @@ public class XMLStreamParser<@NonNull T> {
 
       /**
        * <p>
-       * Add a referenced element definition as a child value of the parent element currently being defined.
+       * Add a referenced element definition as a child of the parent element currently being defined.
        * </p>
        * 
        * <p>
@@ -2161,7 +2229,7 @@ public class XMLStreamParser<@NonNull T> {
 
       /**
        * <p>
-       * Add a referenced element definition as a child exception of the parent element currently being defined.
+       * Add a referenced element definition as a child of the parent element currently being defined.
        * </p>
        * 
        * <p>
@@ -2169,18 +2237,18 @@ public class XMLStreamParser<@NonNull T> {
        * </p>
        * 
        * <p>
-       * Your schema may include XML elements which represent errors or problems, for which you will likely create
-       * definitions mapping them to target values which are subclasses of {@link Exception}. You're free to
-       * {@linkplain #addChildValueElement(QName, Class) add such elements as a regular child} while defining a parent,
-       * and reference the generated {@link Exception} values while calculating the parent's target value, just as you
-       * would with any other type of child element. However, it's worth noting that doing so will <em>not</em> result
-       * in the generated exception actually being <em>thrown</em> at any point. Alternatively, if you use <em>this</em>
-       * method to add that element as a child <em>exception</em> element, instead of as a regular child <em>value</em>
-       * element, then an {@link ExceptionElementException} <em>will</em> be thrown if the parser encounters that child
-       * element. Additionally, if the element currently being defined is the parent of the
-       * {@linkplain XMLStreamParser#getTargetValueClass() target value} elements for a {@linkplain XMLStreamParser
-       * parser}, then the exception thrown in such a case will be {@linkplain RecoverableExceptionElementException
-       * recoverable}.
+       * Your {@linkplain XMLStreamParser.SchemaBuilder schema} may include XML elements which represent errors or
+       * problems, for which you will likely create definitions mapping those to target values which are subclasses of
+       * {@link Exception}. You're free to {@linkplain #addChildValueElement(QName, Class) add such elements as a
+       * regular child} while defining a parent, and reference the generated {@link Exception} values while calculating
+       * the parent's target value, just as you would with any other type of child element. However, it's worth noting
+       * that doing so will <em>not</em> result in the generated exception actually being <em>thrown</em> at any point.
+       * Alternatively, if you use <em>this</em> method to add that element as a special child <em>exception</em>
+       * element, instead of as a regular child <em>value</em> element, then an {@link ExceptionElementException}
+       * <em>will</em> be thrown whenever the parser encounters that child element. Additionally, if the element
+       * currently being defined is the parent of the {@linkplain XMLStreamParser#getTargetValueClass() target values}
+       * for your {@linkplain XMLStreamParser parser}, then the exception thrown in that case will be
+       * {@linkplain RecoverableExceptionElementException recoverable}.
        * </p>
        * 
        * @param <CT> The type of exception which will be constructed when the child element is parsed.
@@ -2202,7 +2270,7 @@ public class XMLStreamParser<@NonNull T> {
 
       /**
        * <p>
-       * Add a referenced element definition as a child exception of the parent element currently being defined.
+       * Add a referenced element definition as a child of the parent element currently being defined.
        * </p>
        * 
        * <p>
@@ -2243,7 +2311,7 @@ public class XMLStreamParser<@NonNull T> {
 
       /**
        * <p>
-       * Add a referenced element definition as a child exception of the parent element currently being defined.
+       * Add a referenced element definition as a child of the parent element currently being defined.
        * </p>
        * 
        * <p>
@@ -2281,7 +2349,7 @@ public class XMLStreamParser<@NonNull T> {
 
       /**
        * <p>
-       * Add a referenced element definition as a child exception of the parent element currently being defined.
+       * Add a referenced element definition as a child of the parent element currently being defined.
        * </p>
        * 
        * <p>
@@ -2701,7 +2769,9 @@ public class XMLStreamParser<@NonNull T> {
        */
       public <@NonNull CT,@NonNull IT> InjectedTargetElementBuilder<ET> injectChildArray(final String injectedFieldName, final QName childElementName, final Class<CT> childElementTargetValueClass, final Class<IT> injectedValueClass, final Function<? super CT,? extends IT> injectedValueFunction) throws NoSuchElementException {
         childValueParsers.add(getParserWithTargetType(childElementTargetValueClass, childElementName));
-        injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValues(childElementName, childElementTargetValueClass).map(injectedValueFunction).toArray((n) -> (Object[])java.lang.reflect.Array.newInstance(injectedValueClass, n)));
+        injectionSpecs.put(injectedFieldName, (ctx) -> ctx.getChildValues(childElementName, childElementTargetValueClass)
+            .map(injectedValueFunction)
+            .toArray((n) -> (Object[])java.lang.reflect.Array.newInstance(injectedValueClass, n)));
         return this;
       }
 
