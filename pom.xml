@@ -7,7 +7,7 @@
   <packaging>pom</packaging>
 
   <name>WWW-EEE Utilities - Serialization (Parent)</name>
-  <description>A Java library providing a lightweight framework for object introspection/serialization/parsing via XML.</description>
+  <description>A Java library providing stream-based introspection/serialization/parsing of infinitely large objects using XML.</description>
   <licenses>
     <license>
       <name>GNU AFFERO GENERAL PUBLIC LICENSE version 3, plus additional permissions</name>
