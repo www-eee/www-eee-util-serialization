@@ -200,7 +200,7 @@ public interface Introspectable extends XMLSerializable {
         streamWriter.writeEmptyElement(XMLConstants.DEFAULT_NS_PREFIX, getType().getSimpleName(), nsString);
       }
 
-      for (final Map.Entry<String,Info.Attr<?>> attr : getAttrs().entrySet()) {
+      for (final Map.Entry<String,Info.Attr<?>> attr : getAttrs().entrySet().stream().filter((attr) -> !attr.getValue().isDefaultValue()).collect(Collectors.toList())) {
         streamWriter.writeAttribute(attr.getKey(), attr.getValue().get().get());
       }
 
@@ -375,15 +375,26 @@ public interface Introspectable extends XMLSerializable {
     public static final class Attr<V> extends Property<V,Optional<String>> {
       @SuppressWarnings("unchecked")
       static final Class<Attr<?>> WILDCARD_CLASS = (Class<Attr<?>>)(Object)Attr.class;
+      protected final boolean isDefaultValue;
 
-      private Attr(final Class<?> declaringClass, final Class<V> valueType, final boolean valueTypeExtensions, @Nullable String value) {
+      private Attr(final Class<?> declaringClass, final Class<V> valueType, final boolean valueTypeExtensions, @Nullable String value, final boolean isDefaultValue) {
         super(declaringClass, valueType, valueTypeExtensions, Optional.ofNullable(value));
+        this.isDefaultValue = isDefaultValue;
         return;
       }
 
       @Override
       public boolean isEmpty() {
         return !get().isPresent();
+      }
+
+      /**
+       * Is the {@linkplain #get() value} contained within this attribute equal to it's "default" value?
+       * 
+       * @return <code>true</code> if this attribute's value is equal to it's default.
+       */
+      public boolean isDefaultValue() {
+        return isDefaultValue;
       }
 
       @Override
@@ -754,13 +765,14 @@ public interface Introspectable extends XMLSerializable {
        * @param valueTypeExtensions Does the <code>valueType</code> include
        * {@linkplain Property#getValueTypeExtensions() extensions}?
        * @param propName The name which uniquely identifies this property.
+       * @param defaultValue What is the default value for this attribute?
        * @param value The attribute value being added.
        * @param valueToString A {@link Function} to create a {@link String} representation of the supplied
        * <code>value</code>.
        * @return The {@link Builder} this method was invoked on.
        */
-      public <V> Builder<I> attr(final Class<V> valueType, final boolean valueTypeExtensions, final String propName, final @Nullable V value, final Function<? super V,? extends String> valueToString) {
-        return put(propName, new Attr<V>(type, valueType, valueTypeExtensions, (value != null) ? valueToString.apply(value) : null));
+      public <V> Builder<I> attr(final Class<V> valueType, final boolean valueTypeExtensions, final String propName, final @Nullable V defaultValue, final @Nullable V value, final Function<? super V,? extends String> valueToString) {
+        return put(propName, new Attr<V>(type, valueType, valueTypeExtensions, (value != null) ? valueToString.apply(value) : null, (defaultValue != null) && (defaultValue.equals(value))));
       }
 
       /**
@@ -771,13 +783,14 @@ public interface Introspectable extends XMLSerializable {
        * @param valueTypeExtensions Does the <code>valueType</code> include
        * {@linkplain Property#getValueTypeExtensions() extensions}?
        * @param propName The name which uniquely identifies this property.
+       * @param defaultValue What is the default value for this attribute?
        * @param value The attribute value being added.
        * @param valueToString A {@link Function} to create a {@link String} representation of the supplied
        * <code>value</code>.
        * @return The {@link Builder} this method was invoked on.
        */
-      public <V> Builder<I> attr(final Class<V> valueType, final boolean valueTypeExtensions, final String propName, final Optional<? extends V> value, final Function<? super V,? extends String> valueToString) {
-        return attr(valueType, valueTypeExtensions, propName, value.isPresent() ? value.get() : null, valueToString);
+      public <V> Builder<I> attr(final Class<V> valueType, final boolean valueTypeExtensions, final String propName, final @Nullable V defaultValue, final Optional<? extends V> value, final Function<? super V,? extends String> valueToString) {
+        return attr(valueType, valueTypeExtensions, propName, defaultValue, value.isPresent() ? value.get() : null, valueToString);
       }
 
       /**
@@ -788,11 +801,12 @@ public interface Introspectable extends XMLSerializable {
        * @param valueTypeExtensions Does the <code>valueType</code> include
        * {@linkplain Property#getValueTypeExtensions() extensions}?
        * @param propName The name which uniquely identifies this property.
+       * @param defaultValue What is the default value for this attribute?
        * @param value The attribute value being added.
        * @return The {@link Builder} this method was invoked on.
        */
-      public <V> Builder<I> attr(final Class<V> valueType, final boolean valueTypeExtensions, final String propName, final @Nullable V value) {
-        return attr(valueType, valueTypeExtensions, propName, value, Object::toString);
+      public <V> Builder<I> attr(final Class<V> valueType, final boolean valueTypeExtensions, final String propName, final @Nullable V defaultValue, final @Nullable V value) {
+        return attr(valueType, valueTypeExtensions, propName, defaultValue, value, Object::toString);
       }
 
       /**
@@ -803,11 +817,12 @@ public interface Introspectable extends XMLSerializable {
        * @param valueTypeExtensions Does the <code>valueType</code> include
        * {@linkplain Property#getValueTypeExtensions() extensions}?
        * @param propName The name which uniquely identifies this property.
+       * @param defaultValue What is the default value for this attribute?
        * @param value The attribute value being added.
        * @return The {@link Builder} this method was invoked on.
        */
-      public <V> Builder<I> attr(final Class<V> valueType, final boolean valueTypeExtensions, final String propName, final Optional<? extends V> value) {
-        return attr(valueType, valueTypeExtensions, propName, value.isPresent() ? value.get() : null);
+      public <V> Builder<I> attr(final Class<V> valueType, final boolean valueTypeExtensions, final String propName, final @Nullable V defaultValue, final Optional<? extends V> value) {
+        return attr(valueType, valueTypeExtensions, propName, defaultValue, value.isPresent() ? value.get() : null);
       }
 
       /**
@@ -818,7 +833,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable String value) {
-        return attr(String.class, false, propName, value);
+        return attr(String.class, false, propName, null, value);
       }
 
       /**
@@ -829,7 +844,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final Optional<? extends String> value) {
-        return attr(String.class, false, propName, value.isPresent() ? value.get() : null);
+        return attr(String.class, false, propName, null, value.isPresent() ? value.get() : null);
       }
 
       /**
@@ -840,7 +855,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable Boolean value) {
-        return attr(Boolean.class, false, propName, value);
+        return attr(Boolean.class, false, propName, null, value);
       }
 
       /**
@@ -851,7 +866,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable Integer value) {
-        return attr(Integer.class, false, propName, value);
+        return attr(Integer.class, false, propName, null, value);
       }
 
       /**
@@ -862,7 +877,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable Long value) {
-        return attr(Long.class, false, propName, value);
+        return attr(Long.class, false, propName, null, value);
       }
 
       /**
@@ -873,7 +888,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable Double value) {
-        return attr(Double.class, false, propName, value);
+        return attr(Double.class, false, propName, null, value);
       }
 
       /**
@@ -884,7 +899,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable Float value) {
-        return attr(Float.class, false, propName, value);
+        return attr(Float.class, false, propName, null, value);
       }
 
       /**
@@ -895,7 +910,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable Short value) {
-        return attr(Short.class, false, propName, value);
+        return attr(Short.class, false, propName, null, value);
       }
 
       /**
@@ -906,7 +921,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable UUID value) {
-        return attr(UUID.class, false, propName, value);
+        return attr(UUID.class, false, propName, null, value);
       }
 
       /**
@@ -917,7 +932,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable URI value) {
-        return attr(URI.class, false, propName, value);
+        return attr(URI.class, false, propName, null, value);
       }
 
       /**
@@ -928,7 +943,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable URL value) {
-        return attr(URL.class, false, propName, value);
+        return attr(URL.class, false, propName, null, value);
       }
 
       /**
@@ -939,7 +954,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable Date value) {
-        return attr(Date.class, false, propName, value);
+        return attr(Date.class, false, propName, null, value);
       }
 
       /**
@@ -950,7 +965,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable Calendar value) {
-        return attr(Calendar.class, false, propName, value);
+        return attr(Calendar.class, false, propName, null, value);
       }
 
       /**
@@ -961,7 +976,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable Instant value) {
-        return attr(Instant.class, false, propName, value);
+        return attr(Instant.class, false, propName, null, value);
       }
 
       /**
@@ -972,7 +987,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable Duration value) {
-        return attr(Duration.class, false, propName, value);
+        return attr(Duration.class, false, propName, null, value);
       }
 
       /**
@@ -983,7 +998,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable LocalDate value) {
-        return attr(LocalDate.class, false, propName, value);
+        return attr(LocalDate.class, false, propName, null, value);
       }
 
       /**
@@ -994,7 +1009,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable LocalTime value) {
-        return attr(LocalTime.class, false, propName, value);
+        return attr(LocalTime.class, false, propName, null, value);
       }
 
       /**
@@ -1005,7 +1020,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable LocalDateTime value) {
-        return attr(LocalDateTime.class, false, propName, value);
+        return attr(LocalDateTime.class, false, propName, null, value);
       }
 
       /**
@@ -1016,7 +1031,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable ZonedDateTime value) {
-        return attr(ZonedDateTime.class, false, propName, value);
+        return attr(ZonedDateTime.class, false, propName, null, value);
       }
 
       /**
@@ -1027,7 +1042,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable OffsetDateTime value) {
-        return attr(OffsetDateTime.class, false, propName, value);
+        return attr(OffsetDateTime.class, false, propName, null, value);
       }
 
       /**
@@ -1038,7 +1053,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable OffsetTime value) {
-        return attr(OffsetTime.class, false, propName, value);
+        return attr(OffsetTime.class, false, propName, null, value);
       }
 
       /**
@@ -1049,7 +1064,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable Year value) {
-        return attr(Year.class, false, propName, value);
+        return attr(Year.class, false, propName, null, value);
       }
 
       /**
@@ -1060,7 +1075,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable YearMonth value) {
-        return attr(YearMonth.class, false, propName, value);
+        return attr(YearMonth.class, false, propName, null, value);
       }
 
       /**
@@ -1071,7 +1086,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable Month value) {
-        return attr(Month.class, false, propName, value);
+        return attr(Month.class, false, propName, null, value);
       }
 
       /**
@@ -1082,7 +1097,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable MonthDay value) {
-        return attr(MonthDay.class, false, propName, value);
+        return attr(MonthDay.class, false, propName, null, value);
       }
 
       /**
@@ -1093,7 +1108,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public Builder<I> attr(final String propName, final @Nullable DayOfWeek value) {
-        return attr(DayOfWeek.class, false, propName, value);
+        return attr(DayOfWeek.class, false, propName, null, value);
       }
 
       /**

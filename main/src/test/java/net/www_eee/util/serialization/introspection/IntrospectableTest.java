@@ -18,6 +18,7 @@ import org.junit.*;
 import static org.junit.Assert.*;
 
 
+@SuppressWarnings("javadoc")
 @NonNullByDefault
 public class IntrospectableTest {
   protected static final URI TEST_NS_URI = URI.create("http://www_eee.net/ns/"); // Something random and short.
