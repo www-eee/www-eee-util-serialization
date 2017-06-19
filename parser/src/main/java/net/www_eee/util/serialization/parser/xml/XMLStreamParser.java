@@ -559,7 +559,7 @@ public class XMLStreamParser<@NonNull T> {
           .filter((entry) -> childElementTargetValueClass.isAssignableFrom(entry.getKey().getValue()))
           .<List<?>> map(Map.Entry::getValue)
           .flatMap(List::stream)
-          .map((value) -> childElementTargetValueClass.cast(value));
+          .map((value) -> Objects.requireNonNull(childElementTargetValueClass.cast(value)));
     }
 
     /**
@@ -818,7 +818,7 @@ public class XMLStreamParser<@NonNull T> {
       } else if (targetContainerElementParser.getChildExceptionParsers().contains(childParser)) {
         @SuppressWarnings("unchecked")
         final ElementParser<? extends Exception> exceptionParser = (ElementParser<? extends Exception>)childParser;
-        throw new RecoverableExceptionElementException(exceptionParser.parse(parentContext, event, reader, closer, null), exceptionParser.new ParsingContextImpl(parentContext, exceptionParser.getEventClass().cast(event)));
+        throw new RecoverableExceptionElementException(exceptionParser.parse(parentContext, event, reader, closer, null), exceptionParser.new ParsingContextImpl(parentContext, Objects.requireNonNull(exceptionParser.getEventClass().cast(event))));
       }
       throw new IllegalStateException();
     }
@@ -1126,7 +1126,7 @@ public class XMLStreamParser<@NonNull T> {
 
     @Override
     protected final T parse(final ElementParser<?>.@Nullable ParsingContextImpl parentContext, final XMLEvent event, final XMLEventReader reader, final AutoCloseable closer, final @Nullable ContainerElementParser targetContainerElementParser) throws ParsingException {
-      return parseImpl((parentContext != null) ? new ParsingContextImpl(parentContext, eventClass.cast(event)) : new ParsingContextImpl(eventClass.cast(event)), reader, closer, targetContainerElementParser);
+      return parseImpl((parentContext != null) ? new ParsingContextImpl(parentContext, Objects.requireNonNull(eventClass.cast(event))) : new ParsingContextImpl(Objects.requireNonNull(eventClass.cast(event))), reader, closer, targetContainerElementParser);
     }
 
     @Override
@@ -1136,7 +1136,7 @@ public class XMLStreamParser<@NonNull T> {
 
     private static final Stream<Map.Entry<ElementParser<?>,List<Object>>> getElementParserEntries(final Stream<? extends Map.Entry<? extends ContentParser<?,?>,List<Object>>> values) {
       return values
-          .filter((entry) -> ElementParser.class.isInstance(entry.getKey())).<Map.Entry<ElementParser<?>,List<Object>>> map((entry) -> new AbstractMap.SimpleImmutableEntry<>(ElementParser.class.cast(entry.getKey()), entry.getValue()));
+          .filter((entry) -> ElementParser.class.isInstance(entry.getKey())).<Map.Entry<ElementParser<?>,List<Object>>> map((entry) -> new AbstractMap.SimpleImmutableEntry<>(Objects.requireNonNull(ElementParser.class.cast(entry.getKey())), entry.getValue()));
     }
 
     private static final <@NonNull ET> Stream<ET> getElementValues(final Stream<? extends Map.Entry<? extends ContentParser<?,?>,List<Object>>> values, final @Nullable QName elementName, final Class<ET> targetValueClass) {
@@ -1145,7 +1145,7 @@ public class XMLStreamParser<@NonNull T> {
           .filter((entry) -> targetValueClass.isAssignableFrom(entry.getKey().getTargetValueClass()))
           .map(Map.Entry::getValue)
           .flatMap(List::stream)
-          .map(targetValueClass::cast);
+          .map((value) -> Objects.requireNonNull(targetValueClass.cast(value)));
     }
 
     public final class ParsingContextImpl implements ElementParsingContext<T> {
@@ -1209,11 +1209,11 @@ public class XMLStreamParser<@NonNull T> {
         while (!event.isEndElement()) {
           final Optional<? extends ContentParser<?,?>> childParser = findChildParserFor(event);
           if (childParser.isPresent()) {
-            final Object childValue = childParser.get().parse(this, childParser.get().eventClass.cast(event), reader, closer, targetContainerElementParser);
+            final Object childValue = childParser.get().parse(this, Objects.requireNonNull(childParser.get().eventClass.cast(event)), reader, closer, targetContainerElementParser);
             if (childExceptionParsers.contains(childParser.get())) {
               @SuppressWarnings("unchecked")
               final ElementParser<? extends Exception> exceptionParser = (ElementParser<? extends Exception>)childParser.get();
-              throw new ExceptionElementException(exceptionParser.getTargetValueClass().cast(childValue), this);
+              throw new ExceptionElementException(Objects.requireNonNull(exceptionParser.getTargetValueClass().cast(childValue)), this);
             }
             final List<Object> existingValues = childValues.get(childParser.get());
             if (existingValues != null) {
@@ -1241,7 +1241,7 @@ public class XMLStreamParser<@NonNull T> {
 
       public <@NonNull S> Stream<S> getSavedValues(final ElementParser<S> savedElementParser) {
         final List<Object> values = savedValues.get(ElementParser.this);
-        return (values != null) ? values.stream().map(savedElementParser.getTargetValueClass()::cast) : Stream.empty();
+        return (values != null) ? values.stream().map((value) -> Objects.requireNonNull(savedElementParser.getTargetValueClass().cast(value))) : Stream.empty();
       }
 
       public <@NonNull S> S getRequiredSavedValue(final ElementParser<S> savedElementParser) throws NoSuchElementException {
@@ -1254,7 +1254,7 @@ public class XMLStreamParser<@NonNull T> {
       }
 
       public <@NonNull ET> Stream<ET> getChildValues(final ContentParser<?,ET> childParser) {
-        return Optional.ofNullable(childValues.get(childParser)).map(List::stream).orElse(Stream.empty()).map((v) -> childParser.getTargetValueClass().cast(v));
+        return Optional.ofNullable(childValues.get(childParser)).map(List::stream).orElse(Stream.empty()).map((v) -> Objects.requireNonNull(childParser.getTargetValueClass().cast(v)));
       }
 
       public <@NonNull ET> Optional<ET> getOptionalChildValue(final ContentParser<?,ET> childParser) {
@@ -1404,7 +1404,7 @@ public class XMLStreamParser<@NonNull T> {
     }
 
     protected SB forkImpl(final @Nullable URI namespace, final boolean unmodifiable) {
-      return schemaBuilderType.cast(new SchemaBuilder<SB>(schemaBuilderType, namespace, elementParsers, unmodifiable));
+      return Objects.requireNonNull(schemaBuilderType.cast(new SchemaBuilder<SB>(schemaBuilderType, namespace, elementParsers, unmodifiable)));
     }
 
     /**
@@ -1450,7 +1450,7 @@ public class XMLStreamParser<@NonNull T> {
      * @see #fork()
      */
     public final SB setNamespace(final @Nullable URI namespace) {
-      if (Objects.equals(this.namespace, namespace)) return schemaBuilderType.cast(this);
+      if (Objects.equals(this.namespace, namespace)) return Objects.requireNonNull(schemaBuilderType.cast(this));
       return forkImpl(namespace, false);
     }
 
@@ -1464,10 +1464,10 @@ public class XMLStreamParser<@NonNull T> {
 
     protected SB addParser(final ElementParser<?> elementParser) {
       elementParsers.add(elementParser);
-      return schemaBuilderType.cast(this);
+      return Objects.requireNonNull(schemaBuilderType.cast(this));
     }
 
-    protected final <@NonNull ET,PT extends ElementParser<?>> PT getParserWithTargetTypeAndOfParserType(final Class<? extends ET> forElementTargetValueClass, final Class<? extends PT> ofParserType, final QName forElementName) throws NoSuchElementException {
+    protected final <@NonNull ET,@NonNull PT extends ElementParser<?>> PT getParserWithTargetTypeAndOfParserType(final Class<? extends ET> forElementTargetValueClass, final Class<? extends PT> ofParserType, final QName forElementName) throws NoSuchElementException {
       final List<ElementParser<?>> parsers = elementParsers.stream()
           .filter((parser) -> ofParserType.isAssignableFrom(parser.getClass()))
           .filter((parser) -> forElementName.equals(parser.getElementName()))
@@ -1475,7 +1475,7 @@ public class XMLStreamParser<@NonNull T> {
           .collect(Collectors.toList());
       if (parsers.isEmpty()) throw new NoSuchElementException("No '" + forElementName.getLocalPart() + "' element found with '" + forElementTargetValueClass + "' target value class");
       if (parsers.size() > 1) throw new NoSuchElementException("Multiple '" + forElementName.getLocalPart() + "' elements found with '" + forElementTargetValueClass + "' target value class");
-      return ofParserType.cast(parsers.get(0));
+      return Objects.requireNonNull(ofParserType.cast(parsers.get(0)));
     }
 
     @SuppressWarnings("unchecked")
@@ -1483,14 +1483,14 @@ public class XMLStreamParser<@NonNull T> {
       return getParserWithTargetTypeAndOfParserType(forElementTargetValueClass, (Class<ElementParser<ET>>)(Object)ElementParser.class, forElementName);
     }
 
-    protected final <PT extends ElementParser<@NonNull ?>> PT getParserOfParserType(final Class<? extends PT> ofParserType, final QName forElementName) throws NoSuchElementException {
+    protected final <@NonNull PT extends ElementParser<@NonNull ?>> PT getParserOfParserType(final Class<? extends PT> ofParserType, final QName forElementName) throws NoSuchElementException {
       final List<ElementParser<?>> parsers = elementParsers.stream()
           .filter((parser) -> ofParserType.isAssignableFrom(parser.getClass()))
           .filter((parser) -> forElementName.equals(parser.getElementName()))
           .collect(Collectors.toList());
       if (parsers.isEmpty()) throw new NoSuchElementException("No '" + forElementName.getLocalPart() + "' element found");
       if (parsers.size() > 1) throw new NoSuchElementException("Multiple '" + forElementName.getLocalPart() + "' elements found");
-      return ofParserType.cast(parsers.get(0));
+      return Objects.requireNonNull(ofParserType.cast(parsers.get(0)));
     }
 
     protected final ElementParser<@NonNull ?> getParser(final QName forElementName) throws NoSuchElementException {
@@ -1800,7 +1800,7 @@ public class XMLStreamParser<@NonNull T> {
         @Override
         public SB completeDefinition() {
           addParser(new ElementParser<ET>(targetValueClass, qn(elementLocalName), targetValueFunction, saveTargetValue, childExceptionParsers, childValueParsers));
-          return schemaBuilderType.cast(SchemaBuilder.this);
+          return Objects.requireNonNull(schemaBuilderType.cast(SchemaBuilder.this));
         }
 
       };
@@ -1912,7 +1912,7 @@ public class XMLStreamParser<@NonNull T> {
         @Override
         public SB completeDefinition() {
           addParser(new InjectedTargetElementParser<ET>(targetValueClass, targetImplClass, qn(injectedElementLocalName), saveTargetValue, childExceptionParsers, childValueParsers, injectionSpecs));
-          return schemaBuilderType.cast(SchemaBuilder.this);
+          return Objects.requireNonNull(schemaBuilderType.cast(SchemaBuilder.this));
         }
 
       };
@@ -2064,7 +2064,7 @@ public class XMLStreamParser<@NonNull T> {
         @Override
         public SB completeDefinition() {
           addParser(new ContainerElementParser(qn(containerElementLocalName), childExceptionParsers, (!childValueParsers.isEmpty()) ? childValueParsers.stream().toArray((n) -> new ElementParser<?>[n]) : null));
-          return schemaBuilderType.cast(SchemaBuilder.this);
+          return Objects.requireNonNull(schemaBuilderType.cast(SchemaBuilder.this));
         }
 
       };

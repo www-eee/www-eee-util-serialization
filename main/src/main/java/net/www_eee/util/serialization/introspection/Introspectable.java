@@ -131,8 +131,8 @@ public interface Introspectable extends XMLSerializable {
      * @param propClass The {@link Class} of {@link Property} desired.
      * @return A {@link Stream} only containing {@link Property} values of the specified type.
      */
-    public static final <P extends Property<?,?>> Stream<Map.Entry<String,P>> filter(final Stream<Map.Entry<String,Property<?,?>>> props, final Class<P> propClass) {
-      return props.filter((e) -> propClass.isInstance(e.getValue())).<Map.Entry<String,P>> map((e) -> new AbstractMap.SimpleImmutableEntry<>(e.getKey(), propClass.cast(e.getValue())));
+    public static final <@NonNull P extends Property<?,?>> Stream<Map.Entry<String,P>> filter(final Stream<Map.Entry<String,Property<?,?>>> props, final Class<P> propClass) {
+      return props.filter((e) -> propClass.isInstance(e.getValue())).<Map.Entry<String,P>> map((e) -> new AbstractMap.SimpleImmutableEntry<>(e.getKey(), Objects.requireNonNull(propClass.cast(e.getValue()))));
     }
 
     /**

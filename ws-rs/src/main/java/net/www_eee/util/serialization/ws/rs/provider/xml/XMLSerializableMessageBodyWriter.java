@@ -13,6 +13,7 @@ import java.lang.annotation.*;
 import java.lang.reflect.*;
 import java.net.*;
 import java.nio.charset.*;
+import java.util.*;
 
 import javax.xml.stream.*;
 
@@ -71,7 +72,7 @@ public class XMLSerializableMessageBodyWriter implements MessageBodyWriter<XMLSe
       streamWriter.writeEndDocument();
     } catch (XMLStreamException xmlse) {
       final Throwable cause = xmlse.getCause();
-      if (cause instanceof IOException) throw IOException.class.cast(cause);
+      if (cause instanceof IOException) throw Objects.requireNonNull(IOException.class.cast(cause));
       throw new WebApplicationException(xmlse);
     }
     return;

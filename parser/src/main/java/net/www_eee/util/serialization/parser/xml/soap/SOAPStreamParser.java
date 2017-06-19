@@ -152,7 +152,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
 
     @Override
     protected SB forkImpl(final @Nullable URI namespace, final boolean unmodifiable) {
-      return schemaBuilderType.cast(new SchemaBuilder<SB>(schemaBuilderType, namespace, elementParsers, unmodifiable));
+      return Objects.requireNonNull(schemaBuilderType.cast(new SchemaBuilder<SB>(schemaBuilderType, namespace, elementParsers, unmodifiable)));
     }
 
     /**
@@ -169,7 +169,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
         @Override
         public SB completeDefinition() {
           addParser(new HeaderElementParser(childExceptionParsers, (!childValueParsers.isEmpty()) ? childValueParsers.stream().toArray((n) -> new ElementParser<?>[n]) : null));
-          return schemaBuilderType.cast(SchemaBuilder.this);
+          return Objects.requireNonNull(schemaBuilderType.cast(SchemaBuilder.this));
         }
 
       };
@@ -228,7 +228,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
         @Override
         public SB completeDefinition() {
           addParser(new BodyElementParser(childExceptionParsers, (!childValueParsers.isEmpty()) ? childValueParsers.stream().toArray((n) -> new ElementParser<?>[n]) : null));
-          return schemaBuilderType.cast(SchemaBuilder.this);
+          return Objects.requireNonNull(schemaBuilderType.cast(SchemaBuilder.this));
         }
 
       };
