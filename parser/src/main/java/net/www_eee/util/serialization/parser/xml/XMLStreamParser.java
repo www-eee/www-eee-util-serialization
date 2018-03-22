@@ -243,7 +243,6 @@ public class XMLStreamParser<@NonNull T> {
      * @return A {@link Map} containing the {@link StartElement#getAttributes() attributes} on the element currently
      * being parsed.
      */
-    @SuppressWarnings("unchecked")
     public default Map<QName,String> getAttrs() {
       return Collections.unmodifiableMap(StreamSupport.stream(Spliterators.spliteratorUnknownSize((Iterator<Attribute>)getStartElement().getAttributes(), Spliterator.NONNULL | Spliterator.DISTINCT | Spliterator.IMMUTABLE), false)
           .map((attr) -> new AbstractMap.SimpleImmutableEntry<>(attr.getName(), attr.getValue()))

@@ -3,7 +3,7 @@
 
   <groupId>net.www-eee.util.serialization</groupId>
   <artifactId>www-eee-util-serialization-parent</artifactId>
-  <version>1.0.0</version>
+  <version>1.1.0</version>
   <packaging>pom</packaging>
 
   <name>WWW-EEE Utilities - Serialization (Parent)</name>
@@ -39,7 +39,7 @@
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <org.eclipse.jdt.annotation.version>2.0.0</org.eclipse.jdt.annotation.version>
+    <org.eclipse.jdt.annotation.version>2.2.0</org.eclipse.jdt.annotation.version>
     <junit.version>4.12</junit.version>
   </properties>
 
@@ -63,7 +63,7 @@
       <plugins>
         <plugin>
           <artifactId>maven-javadoc-plugin</artifactId>
-          <version>2.10.4</version>
+          <version>3.0.0</version>
           <configuration>
             <show>public</show>
             <detectLinks>true</detectLinks>
@@ -75,15 +75,14 @@
     <plugins>
       <plugin>
         <artifactId>maven-compiler-plugin</artifactId>
-        <version>3.6.1</version>
+        <version>3.7.0</version>
         <configuration>
-          <source>1.8</source>
-          <target>1.8</target>
+          <release>9</release>
         </configuration>
       </plugin>
       <plugin>
         <artifactId>maven-assembly-plugin</artifactId>
-        <version>3.0.0</version>
+        <version>3.1.0</version>
         <configuration>
           <descriptorRefs>
             <descriptorRef>project</descriptorRef>

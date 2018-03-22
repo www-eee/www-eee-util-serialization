@@ -4,7 +4,7 @@
   <parent>
     <groupId>net.www-eee.util.serialization</groupId>
     <artifactId>www-eee-util-serialization-parent</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
   </parent>
 
   <artifactId>www-eee-util-serialization-parser</artifactId>
@@ -13,8 +13,8 @@
   <name>WWW-EEE Utilities - Serialization - Parser</name>
 
   <properties>
-    <jooq.version>3.9.1</jooq.version>
-    <jool.version>0.9.12</jool.version>
+    <jooq.version>3.10.5</jooq.version>
+    <jool.version>0.9.13</jool.version>
   </properties>
 
   <dependencies>
@@ -31,5 +31,18 @@
       <scope>compile</scope>
     </dependency>
   </dependencies>
+
+  <build>
+    <plugins>
+      <plugin><!-- FIXME Java 9 compat hack. -->
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>2.21.0</version>
+        <configuration>
+          <argLine>--add-opens=net.www_eee.util.serialization.parser/net.www_eee.util.serialization.parser.xml.soap=org.jooq</argLine>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 
 </project>

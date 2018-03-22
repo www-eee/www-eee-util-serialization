@@ -4,7 +4,7 @@
   <parent>
     <groupId>net.www-eee.util.serialization</groupId>
     <artifactId>www-eee-util-serialization-parent</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
   </parent>
 
   <artifactId>www-eee-util-serialization-ws-rs</artifactId>
@@ -13,7 +13,7 @@
   <name>WWW-EEE Utilities - Serialization - Web Services / REST</name>
 
   <properties>
-    <rs-api.version>2.0.1</rs-api.version>
+    <rs-api.version>2.1</rs-api.version>
   </properties>
 
   <dependencies>
