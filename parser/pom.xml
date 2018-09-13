@@ -14,8 +14,8 @@
 
   <properties>
     <jaxws-api.version>2.3.0</jaxws-api.version>
-    <jooq.version>3.10.5</jooq.version>
-    <jool.version>0.9.13</jool.version>
+    <jooq.version>3.11.4</jooq.version>
+    <jool.version>0.9.14</jool.version>
     <jaxws-ri.version>2.3.0.2</jaxws-ri.version>
   </properties>
 
