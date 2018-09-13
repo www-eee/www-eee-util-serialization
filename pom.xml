@@ -3,7 +3,7 @@
 
   <groupId>net.www-eee.util.serialization</groupId>
   <artifactId>www-eee-util-serialization-parent</artifactId>
-  <version>1.2.0</version>
+  <version>1.1.0</version>
   <packaging>pom</packaging>
 
   <name>WWW-EEE Utilities - Serialization (Parent)</name>
@@ -95,7 +95,7 @@
         <artifactId>maven-compiler-plugin</artifactId>
         <version>3.8.0</version>
         <configuration>
-          <release>11</release>
+          <release>8</release>
         </configuration>
       </plugin>
       <plugin>
