@@ -82,10 +82,7 @@
           <configuration>
             <show>public</show>
             <detectLinks>true</detectLinks>
-            <additionalJOptions>
-              <additionalJOption>-html5</additionalJOption>
-              <additionalJOption>-Xdoclint:all</additionalJOption>
-            </additionalJOptions>
+            <additionalparam>-Xdoclint:all</additionalparam>
           </configuration>
         </plugin>
       </plugins>
