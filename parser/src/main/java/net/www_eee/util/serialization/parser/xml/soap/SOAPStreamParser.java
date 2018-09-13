@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2017 by Chris Hubick. All Rights Reserved.
+ * Copyright 2016-2018 by Chris Hubick. All Rights Reserved.
  * 
  * This work is licensed under the terms of the "GNU AFFERO GENERAL PUBLIC LICENSE" version 3, as published by the Free
  * Software Foundation <http://www.gnu.org/licenses/>, plus additional permissions, a copy of which you should have
@@ -10,6 +10,7 @@ package net.www_eee.util.serialization.parser.xml.soap;
 
 import java.net.*;
 import java.util.*;
+import java.util.function.*;
 import java.util.stream.*;
 
 import javax.xml.namespace.*;
@@ -98,7 +99,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
    */
   @SuppressWarnings("unchecked")
   public static SchemaBuilder<@NonNull ? extends SchemaBuilder<@NonNull ?>> buildSchema(final @Nullable URI namespace) {
-    return new SchemaBuilder<>((Class<SchemaBuilder<?>>)(Object)SchemaBuilder.class, namespace, null, false);
+    return new SchemaBuilder<>((Class<SchemaBuilder<?>>)(Object)SchemaBuilder.class, namespace, null, null, false);
   }
 
   protected static class HeaderElementParser extends ContainerElementParser {
@@ -144,15 +145,15 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
    */
   public static class SchemaBuilder<@NonNull SB extends SchemaBuilder<@NonNull ?>> extends XMLStreamParser.SchemaBuilder<SB> {
 
-    protected SchemaBuilder(final Class<? extends SB> builderType, final @Nullable URI namespace, final @Nullable Set<ElementParser<?>> elementParsers, final boolean unmodifiable) {
-      super(builderType, namespace, elementParsers, unmodifiable);
+    protected SchemaBuilder(final Class<? extends SB> builderType, final @Nullable URI namespace, final @Nullable Set<ElementParser<?>> elementParsers, final @Nullable Map<String,Function<ElementParsingContext,@Nullable Object>> globalInjectionSpecs, final boolean unmodifiable) {
+      super(builderType, namespace, elementParsers, globalInjectionSpecs, unmodifiable);
       this.elementParsers.add(FAULT_ELEMENT_PARSER);
       return;
     }
 
     @Override
     protected SB forkImpl(final @Nullable URI namespace, final boolean unmodifiable) {
-      return Objects.requireNonNull(schemaBuilderType.cast(new SchemaBuilder<SB>(schemaBuilderType, namespace, elementParsers, unmodifiable)));
+      return Objects.requireNonNull(schemaBuilderType.cast(new SchemaBuilder<SB>(schemaBuilderType, namespace, elementParsers, globalInjectionSpecs, unmodifiable)));
     }
 
     /**

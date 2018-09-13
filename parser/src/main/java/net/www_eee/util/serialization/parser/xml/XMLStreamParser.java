@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2017 by Chris Hubick. All Rights Reserved.
+ * Copyright 2016-2018 by Chris Hubick. All Rights Reserved.
  * 
  * This work is licensed under the terms of the "GNU AFFERO GENERAL PUBLIC LICENSE" version 3, as published by the Free
  * Software Foundation <http://www.gnu.org/licenses/>, plus additional permissions, a copy of which you should have
@@ -169,11 +169,11 @@ public class XMLStreamParser<@NonNull T> {
    */
   @SuppressWarnings("unchecked")
   public static SchemaBuilder<@NonNull ? extends SchemaBuilder<@NonNull ?>> buildSchema(final @Nullable URI namespace) {
-    return new SchemaBuilder<>((Class<SchemaBuilder<?>>)(Object)SchemaBuilder.class, namespace, null, false);
+    return new SchemaBuilder<>((Class<SchemaBuilder<?>>)(Object)SchemaBuilder.class, namespace, null, null, false);
   }
 
   @SuppressWarnings("unchecked")
-  protected static final <@NonNull T> ElementParser<T>.ParsingContextImpl cast(final ElementParsingContext<T> ctx) {
+  protected static final <@NonNull T> ElementParser<T>.ParsingContextImpl cast(final ElementParsingContext ctx) {
     return (ElementParser<T>.ParsingContextImpl)(Object)ctx;
   }
 
@@ -194,17 +194,15 @@ public class XMLStreamParser<@NonNull T> {
    * through {@linkplain #getInjectedValue(Class, Map) injection}, and the ability to
    * {@linkplain #createElementValueException(Exception) create exceptions}.
    * </p>
-   * 
-   * @param <T> The {@linkplain #getTargetValueClass() target value class} of the element being parsed.
    */
-  public interface ElementParsingContext<@NonNull T> {
+  public interface ElementParsingContext {
 
     /**
      * Get the {@link Class} of target value produced by the element currently being parsed.
      * 
      * @return The {@link Class} of target value produced by the element currently being parsed.
      */
-    public Class<T> getTargetValueClass();
+    public Class<?> getTargetValueClass();
 
     /**
      * Get the {@linkplain QName qualified name} of the element currently being parsed.
@@ -697,7 +695,7 @@ public class XMLStreamParser<@NonNull T> {
      * @see DefaultRecordMapper
      * @see #getInjectedValue(Class)
      */
-    public default <@NonNull IT> IT getInjectedValue(final Class<IT> injectedValueClass, final @Nullable Map<String,Function<ElementParsingContext<T>,@Nullable Object>> injectionSpecs) throws ElementValueException {
+    public default <@NonNull IT> IT getInjectedValue(final Class<IT> injectedValueClass, final @Nullable Map<String,Function<ElementParsingContext,@Nullable Object>> injectionSpecs) throws ElementValueException {
       final Map<String,Field<Object>> fields = new HashMap<>();
       final Consumer<String> defineField = (fieldName) -> fields.put(fieldName, DSL.field(DSL.name(fieldName)));
       getAttrs().keySet().stream().map(QName::getLocalPart).forEach(defineField);
@@ -897,7 +895,7 @@ public class XMLStreamParser<@NonNull T> {
      * 
      * @return The {@link XMLStreamParser.ElementParsingContext ElementParsingContext} when this exception occurred.
      */
-    public ElementParsingContext<?> getElementParsingContext() {
+    public ElementParsingContext getElementParsingContext() {
       return context;
     }
 
@@ -1067,12 +1065,12 @@ public class XMLStreamParser<@NonNull T> {
     @SuppressWarnings("unchecked")
     public static final Class<ElementParser<@NonNull ?>> WILDCARD_CLASS = (Class<ElementParser<@NonNull ?>>)(Object)ElementParser.class;
     protected final QName elementName;
-    private final Function<ElementParsingContext<T>,T> targetValueFunction;
+    private final Function<ElementParsingContext,T> targetValueFunction;
     protected final boolean saveTargetValue;
     private final Set<? extends ElementParser<? extends Exception>> childExceptionParsers;
     private final Set<? extends ContentParser<?,?>> childValueParsers;
 
-    public ElementParser(final Class<T> targetValueClass, final QName elementName, final Function<ElementParsingContext<T>,T> targetValueFunction, final boolean saveTargetValue, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @Nullable Collection<? extends ContentParser<?,?>> childValueParsers) {
+    public ElementParser(final Class<T> targetValueClass, final QName elementName, final Function<ElementParsingContext,T> targetValueFunction, final boolean saveTargetValue, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @Nullable Collection<? extends ContentParser<?,?>> childValueParsers) {
       super(StartElement.class, targetValueClass);
       this.elementName = elementName;
       this.targetValueFunction = targetValueFunction;
@@ -1082,7 +1080,7 @@ public class XMLStreamParser<@NonNull T> {
       return;
     }
 
-    public ElementParser(final Class<T> targetValueClass, final QName elementName, final Function<ElementParsingContext<T>,T> targetValueFunction, final boolean saveTargetValue, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @NonNull ContentParser<?,?> @Nullable... childValueParsers) {
+    public ElementParser(final Class<T> targetValueClass, final QName elementName, final Function<ElementParsingContext,T> targetValueFunction, final boolean saveTargetValue, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @NonNull ContentParser<?,?> @Nullable... childValueParsers) {
       this(targetValueClass, elementName, targetValueFunction, saveTargetValue, childExceptionParsers, ((childValueParsers != null) && (childValueParsers.length > 0)) ? Arrays.asList(childValueParsers) : null);
       return;
     }
@@ -1147,7 +1145,7 @@ public class XMLStreamParser<@NonNull T> {
           .map((value) -> Objects.requireNonNull(targetValueClass.cast(value)));
     }
 
-    public final class ParsingContextImpl implements ElementParsingContext<T> {
+    public final class ParsingContextImpl implements ElementParsingContext {
       private final Map<ElementParser<?>,List<Object>> savedValues; // This is a reference to a singleton Map of saved values, shared by the entire context tree.
       private final Map<ContentParser<?,?>,List<Object>> childValues = new ConcurrentHashMap<>();
       private final ElementParser<?>.@Nullable ParsingContextImpl parentContext;
@@ -1312,7 +1310,7 @@ public class XMLStreamParser<@NonNull T> {
   protected static class SimpleElementParser<@NonNull T> extends ElementParser<T> {
     private static final CharactersParser CHARACTERS_PARSER = new CharactersParser(true, true, false);
 
-    public SimpleElementParser(final Class<T> targetValueClass, final QName elementName, final BiFunction<ElementParsingContext<T>,? super String,? extends T> targetValueFunction, final boolean saveTargetValue) {
+    public SimpleElementParser(final Class<T> targetValueClass, final QName elementName, final BiFunction<ElementParsingContext,? super String,? extends T> targetValueFunction, final boolean saveTargetValue) {
       super(targetValueClass, elementName, (ctx) -> targetValueFunction.apply(ctx, cast(ctx).getChildValues(CHARACTERS_PARSER).collect(Collectors.joining())), saveTargetValue, null, CHARACTERS_PARSER);
       return;
     }
@@ -1335,7 +1333,7 @@ public class XMLStreamParser<@NonNull T> {
 
   protected static class InjectedTargetElementParser<@NonNull T> extends ElementParser<T> {
 
-    public InjectedTargetElementParser(final Class<T> targetValueClass, final Class<? extends T> targetImplClass, final QName elementName, final boolean saveTargetValue, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @Nullable Collection<? extends ElementParser<?>> childValueParsers, final @Nullable Map<String,Function<ElementParsingContext<T>,@Nullable Object>> injectionSpecs) throws IllegalArgumentException {
+    public InjectedTargetElementParser(final Class<T> targetValueClass, final Class<? extends T> targetImplClass, final QName elementName, final boolean saveTargetValue, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @Nullable Collection<? extends ElementParser<?>> childValueParsers, final @Nullable Map<String,Function<ElementParsingContext,@Nullable Object>> injectionSpecs) throws IllegalArgumentException {
       super(targetValueClass, elementName, (ctx) -> ctx.getInjectedValue(targetImplClass, injectionSpecs), saveTargetValue, childExceptionParsers, childValueParsers);
       return;
     }
@@ -1393,17 +1391,20 @@ public class XMLStreamParser<@NonNull T> {
     protected final Class<? extends SB> schemaBuilderType;
     protected final @Nullable URI namespace;
     protected final Set<ElementParser<?>> elementParsers;
+    protected final Map<String,Function<ElementParsingContext,@Nullable Object>> globalInjectionSpecs;
 
-    protected SchemaBuilder(final Class<? extends SB> schemaBuilderType, final @Nullable URI namespace, final @Nullable Set<ElementParser<?>> elementParsers, final boolean unmodifiable) {
+    protected SchemaBuilder(final Class<? extends SB> schemaBuilderType, final @Nullable URI namespace, final @Nullable Set<ElementParser<?>> elementParsers, final @Nullable Map<String,Function<ElementParsingContext,@Nullable Object>> globalInjectionSpecs, final boolean unmodifiable) {
       this.schemaBuilderType = Objects.requireNonNull(schemaBuilderType);
       this.namespace = namespace;
-      final Set<ElementParser<?>> copy = (elementParsers != null) ? new CopyOnWriteArraySet<>(elementParsers) : new CopyOnWriteArraySet<>();
-      this.elementParsers = (unmodifiable) ? Collections.unmodifiableSet(copy) : copy;
+      final Set<ElementParser<?>> elementParsersCopy = (elementParsers != null) ? new CopyOnWriteArraySet<>(elementParsers) : new CopyOnWriteArraySet<>();
+      this.elementParsers = (unmodifiable) ? Collections.unmodifiableSet(elementParsersCopy) : elementParsersCopy;
+      final Map<String,Function<ElementParsingContext,@Nullable Object>> globalInjectionSpecsCopy = (globalInjectionSpecs != null) ? new ConcurrentHashMap<>(globalInjectionSpecs) : new ConcurrentHashMap<>();
+      this.globalInjectionSpecs = (unmodifiable) ? Collections.unmodifiableMap(globalInjectionSpecsCopy) : globalInjectionSpecsCopy;
       return;
     }
 
     protected SB forkImpl(final @Nullable URI namespace, final boolean unmodifiable) {
-      return Objects.requireNonNull(schemaBuilderType.cast(new SchemaBuilder<SB>(schemaBuilderType, namespace, elementParsers, unmodifiable)));
+      return Objects.requireNonNull(schemaBuilderType.cast(new SchemaBuilder<SB>(schemaBuilderType, namespace, elementParsers, globalInjectionSpecs, unmodifiable)));
     }
 
     /**
@@ -1494,6 +1495,22 @@ public class XMLStreamParser<@NonNull T> {
 
     protected final ElementParser<@NonNull ?> getParser(final QName forElementName) throws NoSuchElementException {
       return getParserOfParserType(ElementParser.WILDCARD_CLASS, forElementName);
+    }
+
+    /**
+     * Add a custom injection specification for <code>injectedFieldName</code> to <em>all</em> injected objects
+     * subsequently defined through this schema.
+     * 
+     * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the resulting value should
+     * be populated into for injection.
+     * @param injectionSpec A Function which will return a value to be injected into <code>injectedFieldName</code>
+     * based on the {@link XMLStreamParser.ElementParsingContext ElementParsingContext}.
+     * @return The {@link XMLStreamParser.SchemaBuilder SchemaBuilder} this method was invoked on.
+     * @see InjectedTargetElementBuilder#injectField(String, Function)
+     */
+    public SB injectGlobalField(final String injectedFieldName, final Function<ElementParsingContext,@Nullable Object> injectionSpec) {
+      globalInjectionSpecs.put(injectedFieldName, injectionSpec);
+      return Objects.requireNonNull(schemaBuilderType.cast(this));
     }
 
     @SuppressWarnings("unchecked")
@@ -1645,7 +1662,7 @@ public class XMLStreamParser<@NonNull T> {
      * @return The {@link XMLStreamParser.SchemaBuilder SchemaBuilder} this method was invoked on.
      * @see #defineSimpleElement(String, Class, Function)
      */
-    public final <@NonNull ET> SB defineSimpleElement(final String simpleElementLocalName, final Class<ET> targetValueClass, final BiFunction<ElementParsingContext<ET>,String,ET> targetValueFunction, final boolean saveTargetValue) {
+    public final <@NonNull ET> SB defineSimpleElement(final String simpleElementLocalName, final Class<ET> targetValueClass, final BiFunction<ElementParsingContext,String,ET> targetValueFunction, final boolean saveTargetValue) {
       return addParser(new SimpleElementParser<ET>(targetValueClass, qn(simpleElementLocalName), targetValueFunction, saveTargetValue));
     }
 
@@ -1754,7 +1771,7 @@ public class XMLStreamParser<@NonNull T> {
      * @see #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean)
      * @see #defineSimpleElement(String, Class, BiFunction, boolean)
      */
-    public final <@NonNull ET> SB defineElement(final String elementLocalName, final Class<ET> targetValueClass, final Function<ElementParsingContext<ET>,ET> targetValueFunction) {
+    public final <@NonNull ET> SB defineElement(final String elementLocalName, final Class<ET> targetValueClass, final Function<ElementParsingContext,ET> targetValueFunction) {
       final QName elementName = qn(elementLocalName);
       return addParser(new ElementParser<ET>(targetValueClass, elementName, targetValueFunction, false, null));
     }
@@ -1793,7 +1810,7 @@ public class XMLStreamParser<@NonNull T> {
      * @see #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean)
      * @see #defineSimpleElement(String, Class, BiFunction, boolean)
      */
-    public final <@NonNull ET> ChildElementListBuilder defineElementWithChildBuilder(final String elementLocalName, final Class<ET> targetValueClass, final Function<ElementParsingContext<ET>,ET> targetValueFunction, final boolean saveTargetValue) {
+    public final <@NonNull ET> ChildElementListBuilder defineElementWithChildBuilder(final String elementLocalName, final Class<ET> targetValueClass, final Function<ElementParsingContext,ET> targetValueFunction, final boolean saveTargetValue) {
       return new ChildElementListBuilder(null, null) {
 
         @Override
@@ -1803,6 +1820,14 @@ public class XMLStreamParser<@NonNull T> {
         }
 
       };
+    }
+
+    protected static final @Nullable Map<String,Function<ElementParsingContext,@Nullable Object>> snapshotInjectionSpecs(final @Nullable Map<String,Function<ElementParsingContext,@Nullable Object>> globalInjectionSpecs, final @Nullable Map<String,Function<ElementParsingContext,@Nullable Object>> injectionSpecs) {
+      if (((globalInjectionSpecs == null) || (globalInjectionSpecs.isEmpty())) && ((injectionSpecs == null) || (injectionSpecs.isEmpty()))) return null;
+      final Map<String,Function<ElementParsingContext,@Nullable Object>> snapshot = new ConcurrentHashMap<>();
+      if (globalInjectionSpecs != null) snapshot.putAll(globalInjectionSpecs);
+      if (injectionSpecs != null) snapshot.putAll(injectionSpecs);
+      return Collections.unmodifiableMap(snapshot);
     }
 
     /**
@@ -1836,7 +1861,7 @@ public class XMLStreamParser<@NonNull T> {
      */
     public final <@NonNull ET> SB defineElementWithInjectedTarget(final String injectedElementLocalName, final Class<ET> targetValueClass, final Class<? extends ET> targetImplClass) {
       final QName injectedElementName = qn(injectedElementLocalName);
-      return addParser(new InjectedTargetElementParser<ET>(targetValueClass, targetImplClass, injectedElementName, false, null, null, null));
+      return addParser(new InjectedTargetElementParser<ET>(targetValueClass, targetImplClass, injectedElementName, false, null, null, snapshotInjectionSpecs(globalInjectionSpecs, null)));
     }
 
     /**
@@ -1910,7 +1935,7 @@ public class XMLStreamParser<@NonNull T> {
 
         @Override
         public SB completeDefinition() {
-          addParser(new InjectedTargetElementParser<ET>(targetValueClass, targetImplClass, qn(injectedElementLocalName), saveTargetValue, childExceptionParsers, childValueParsers, injectionSpecs));
+          addParser(new InjectedTargetElementParser<ET>(targetValueClass, targetImplClass, qn(injectedElementLocalName), saveTargetValue, childExceptionParsers, childValueParsers, snapshotInjectionSpecs(globalInjectionSpecs, injectionSpecs)));
           return Objects.requireNonNull(schemaBuilderType.cast(SchemaBuilder.this));
         }
 
@@ -2404,7 +2429,7 @@ public class XMLStreamParser<@NonNull T> {
      * @param <ET> The type of target value which will be constructed when the injected element is parsed.
      */
     public abstract class InjectedTargetElementBuilder<@NonNull ET> extends ChildElementListBuilder {
-      protected final Map<String,Function<ElementParsingContext<ET>,@Nullable Object>> injectionSpecs = new ConcurrentHashMap<>();
+      protected final Map<String,Function<ElementParsingContext,@Nullable Object>> injectionSpecs = new ConcurrentHashMap<>();
 
       /**
        * Construct a new {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder
@@ -2476,7 +2501,7 @@ public class XMLStreamParser<@NonNull T> {
        * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
        * this method was invoked on.
        */
-      public InjectedTargetElementBuilder<ET> injectField(final String injectedFieldName, final Function<ElementParsingContext<ET>,@Nullable Object> injectionSpec) {
+      public InjectedTargetElementBuilder<ET> injectField(final String injectedFieldName, final Function<ElementParsingContext,@Nullable Object> injectionSpec) {
         injectionSpecs.put(injectedFieldName, injectionSpec);
         return this;
       }
