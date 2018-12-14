@@ -1,5 +1,5 @@
 /*
- * Copyright 2017-2017 by Chris Hubick. All Rights Reserved.
+ * Copyright 2017-2018 by Chris Hubick. All Rights Reserved.
  * 
  * This work is licensed under the terms of the "GNU AFFERO GENERAL PUBLIC LICENSE" version 3, as published by the Free
  * Software Foundation <http://www.gnu.org/licenses/>, plus additional permissions, a copy of which you should have
@@ -170,7 +170,7 @@ public interface Introspectable extends XMLSerializable {
 
     @Override
     public int hashCode() {
-      return props.hashCode();
+      return Objects.hash(type, namespace, lateBound, props);
     }
 
     @Override
@@ -359,6 +359,22 @@ public interface Introspectable extends XMLSerializable {
        * @return A boolean value indicating if this property is empty.
        */
       public abstract boolean isEmpty();
+
+      @Override
+      public int hashCode() {
+        return Objects.hash(declaringClass, valueType, valueTypeExtensions, value);
+      }
+
+      @Override
+      public boolean equals(final @Nullable Object other) {
+        return Optional.ofNullable(other).filter(Property.class::isInstance)
+            .map(Property.class::cast)
+            .filter((p) -> declaringClass.equals(p.declaringClass))
+            .filter((p) -> valueType.equals(p.valueType))
+            .filter((p) -> valueTypeExtensions == p.valueTypeExtensions)
+            .filter((p) -> value.equals(p.value))
+            .isPresent();
+      }
 
       @Override
       public String toString() {
