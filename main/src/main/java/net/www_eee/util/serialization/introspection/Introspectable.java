@@ -229,7 +229,7 @@ public interface Introspectable extends XMLSerializable {
           if (Info.PrimitiveCollection.cast(child.getValue()).isPresent()) {
 
             final Info.PrimitiveCollection<?> primitiveCollection = Info.PrimitiveCollection.cast(child.getValue()).get();
-            final Iterator<? extends @Nullable String> iter = primitiveCollection.get();
+            final Iterator<? extends @Nullable String> iter = primitiveCollection.get().iterator();
             while (iter.hasNext()) {
               final @Nullable String value = iter.next();
               if (value != null) {
@@ -244,7 +244,7 @@ public interface Introspectable extends XMLSerializable {
           } else if (Info.ComplexCollection.cast(child.getValue()).isPresent()) {
 
             final Info.ComplexCollection<?> complexCollection = Info.ComplexCollection.cast(child.getValue()).get();
-            final Iterator<? extends @Nullable Info<?>> iter = complexCollection.get();
+            final Iterator<? extends @Nullable Info<?>> iter = complexCollection.get().iterator();
             while (iter.hasNext()) {
               final @Nullable Info<?> value = iter.next();
               if (value != null) value.writeXML(streamWriter, getNamespace());
@@ -253,7 +253,7 @@ public interface Introspectable extends XMLSerializable {
           } else if (Info.PrimitiveMap.cast(child.getValue()).isPresent()) {
 
             final Info.PrimitiveMap<?,?> primitiveMap = Info.PrimitiveMap.cast(child.getValue()).get();
-            final Iterator<? extends Map.Entry<? extends @Nullable String,? extends @Nullable String>> iter = primitiveMap.get();
+            final Iterator<? extends Map.Entry<? extends @Nullable String,? extends @Nullable String>> iter = primitiveMap.get().iterator();
             while (iter.hasNext()) {
               final Map.Entry<? extends @Nullable String,? extends @Nullable String> entry = iter.next();
               final @Nullable String key = entry.getKey();
@@ -273,7 +273,7 @@ public interface Introspectable extends XMLSerializable {
           } else if (Info.ComplexMap.cast(child.getValue()).isPresent()) {
 
             final Info.ComplexMap<?,?> complexMap = Info.ComplexMap.cast(child.getValue()).get();
-            final Iterator<? extends Map.Entry<? extends @Nullable String,? extends @Nullable Info<?>>> iter = complexMap.get();
+            final Iterator<? extends Map.Entry<? extends @Nullable String,? extends @Nullable Info<?>>> iter = complexMap.get().iterator();
             while (iter.hasNext()) {
               final Map.Entry<? extends @Nullable String,? extends @Nullable Info<?>> entry = iter.next();
               final @Nullable String key = entry.getKey();
@@ -426,7 +426,7 @@ public interface Introspectable extends XMLSerializable {
      * @param <V> The type of value this child contains.
      * @param <C> The type of container used to expose this property's contents.
      */
-    public static abstract class Child<V,@NonNull C extends Iterator<?>> extends Property<V,C> {
+    public static abstract class Child<V,@NonNull C extends Iterable<?>> extends Property<V,C> {
       @SuppressWarnings("unchecked")
       static final Class<Child<?,?>> WILDCARD_CLASS = (Class<Child<?,?>>)(Object)Child.class;
       protected final String valueName;
@@ -448,7 +448,7 @@ public interface Introspectable extends XMLSerializable {
 
       @Override
       public final boolean isEmpty() {
-        return !get().hasNext();
+        return !get().iterator().hasNext();
       }
 
     } // Info.Child
@@ -460,7 +460,7 @@ public interface Introspectable extends XMLSerializable {
      * @param <V> The type of value this collection contains.
      * @param <C> The type of container used to expose this property's contents.
      */
-    public static abstract class CollectionChild<V,@NonNull C extends Iterator<?>> extends Child<V,C> {
+    public static abstract class CollectionChild<V,@NonNull C extends Iterable<?>> extends Child<V,C> {
       @SuppressWarnings("unchecked")
       static final Class<CollectionChild<?,?>> WILDCARD_CLASS = (Class<CollectionChild<?,?>>)(Object)CollectionChild.class;
 
@@ -489,12 +489,12 @@ public interface Introspectable extends XMLSerializable {
      *
      * @param <V> The type of value this collection contains.
      */
-    public static final class PrimitiveCollection<V> extends CollectionChild<V,Iterator<? extends @Nullable String>> {
+    public static final class PrimitiveCollection<V> extends CollectionChild<V,Iterable<? extends @Nullable String>> {
       @SuppressWarnings("unchecked")
       static final Class<PrimitiveCollection<?>> WILDCARD_CLASS = (Class<PrimitiveCollection<?>>)(Object)PrimitiveCollection.class;
 
-      private PrimitiveCollection(final Class<?> declaringClass, final Class<V> valueType, final boolean valueTypeExtensions, final String valueName, final @Nullable Iterator<? extends @Nullable String> values) {
-        super(declaringClass, valueType, valueTypeExtensions, valueName, (values != null) ? values : Collections.emptyIterator());
+      private PrimitiveCollection(final Class<?> declaringClass, final Class<V> valueType, final boolean valueTypeExtensions, final String valueName, final @Nullable Iterable<? extends @Nullable String> values) {
+        super(declaringClass, valueType, valueTypeExtensions, valueName, (values != null) ? values : Collections.emptyList());
         return;
       }
 
@@ -518,12 +518,12 @@ public interface Introspectable extends XMLSerializable {
      *
      * @param <V> The type of value this collection contains.
      */
-    public static final class ComplexCollection<V extends Introspectable> extends CollectionChild<V,Iterator<? extends @Nullable Info<V>>> {
+    public static final class ComplexCollection<V extends Introspectable> extends CollectionChild<V,Iterable<? extends @Nullable Info<V>>> {
       @SuppressWarnings("unchecked")
       static final Class<ComplexCollection<?>> WILDCARD_CLASS = (Class<ComplexCollection<?>>)(Object)ComplexCollection.class;
 
-      private ComplexCollection(final Class<?> declaringClass, final Class<V> valueType, final boolean valueTypeExtensions, final String valueName, final @Nullable Iterator<? extends @Nullable Info<V>> values) {
-        super(declaringClass, valueType, valueTypeExtensions, valueName, (values != null) ? values : Collections.emptyIterator());
+      private ComplexCollection(final Class<?> declaringClass, final Class<V> valueType, final boolean valueTypeExtensions, final String valueName, final @Nullable Iterable<? extends @Nullable Info<V>> values) {
+        super(declaringClass, valueType, valueTypeExtensions, valueName, (values != null) ? values : Collections.emptyList());
         return;
       }
 
@@ -549,7 +549,7 @@ public interface Introspectable extends XMLSerializable {
      * @param <V> The type of value this map contains.
      * @param <C> The type of container used to expose this property's contents.
      */
-    public static abstract class MapChild<K,V,@NonNull C extends Iterator<? extends Map.Entry<? extends @Nullable String,?>>> extends Child<V,C> {
+    public static abstract class MapChild<K,V,@NonNull C extends Iterable<? extends Map.Entry<? extends @Nullable String,?>>> extends Child<V,C> {
       @SuppressWarnings("unchecked")
       static final Class<MapChild<?,?,?>> WILDCARD_CLASS = (Class<MapChild<?,?,?>>)(Object)MapChild.class;
       protected final Class<K> keyType;
@@ -612,12 +612,12 @@ public interface Introspectable extends XMLSerializable {
      * @param <K> The type of key this map contains.
      * @param <V> The type of value this map contains.
      */
-    public static final class PrimitiveMap<K,V> extends MapChild<K,V,Iterator<? extends Map.Entry<? extends @Nullable String,? extends @Nullable String>>> {
+    public static final class PrimitiveMap<K,V> extends MapChild<K,V,Iterable<? extends Map.Entry<? extends @Nullable String,? extends @Nullable String>>> {
       @SuppressWarnings("unchecked")
       static final Class<PrimitiveMap<?,?>> WILDCARD_CLASS = (Class<PrimitiveMap<?,?>>)(Object)PrimitiveMap.class;
 
-      private PrimitiveMap(final Class<?> declaringClass, final Class<K> keyType, final boolean keyTypeExtensions, final String keyName, final Class<V> valueType, final boolean valueTypeExtensions, final String valueName, final @Nullable Iterator<? extends Map.Entry<? extends @Nullable String,? extends @Nullable String>> values) {
-        super(declaringClass, keyType, keyTypeExtensions, keyName, valueType, valueTypeExtensions, valueName, (values != null) ? values : Collections.emptyIterator());
+      private PrimitiveMap(final Class<?> declaringClass, final Class<K> keyType, final boolean keyTypeExtensions, final String keyName, final Class<V> valueType, final boolean valueTypeExtensions, final String valueName, final @Nullable Iterable<? extends Map.Entry<? extends @Nullable String,? extends @Nullable String>> values) {
+        super(declaringClass, keyType, keyTypeExtensions, keyName, valueType, valueTypeExtensions, valueName, (values != null) ? values : Collections.emptyList());
         return;
       }
 
@@ -641,12 +641,12 @@ public interface Introspectable extends XMLSerializable {
      * @param <K> The type of key this map contains.
      * @param <V> The type of value this map contains.
      */
-    public static final class ComplexMap<K,V extends Introspectable> extends MapChild<K,V,Iterator<? extends Map.Entry<? extends @Nullable String,? extends @Nullable Info<V>>>> {
+    public static final class ComplexMap<K,V extends Introspectable> extends MapChild<K,V,Iterable<? extends Map.Entry<? extends @Nullable String,? extends @Nullable Info<V>>>> {
       @SuppressWarnings("unchecked")
       static final Class<ComplexMap<?,?>> WILDCARD_CLASS = (Class<ComplexMap<?,?>>)(Object)ComplexMap.class;
 
-      private ComplexMap(final Class<?> declaringClass, final Class<K> keyType, final boolean keyTypeExtensions, final String keyName, final Class<V> valueType, final boolean valueTypeExtensions, final String valueName, final @Nullable Iterator<? extends Map.Entry<? extends @Nullable String,? extends @Nullable Info<V>>> values) {
-        super(declaringClass, keyType, keyTypeExtensions, keyName, valueType, valueTypeExtensions, valueName, (values != null) ? values : Collections.emptyIterator());
+      private ComplexMap(final Class<?> declaringClass, final Class<K> keyType, final boolean keyTypeExtensions, final String keyName, final Class<V> valueType, final boolean valueTypeExtensions, final String valueName, final @Nullable Iterable<? extends Map.Entry<? extends @Nullable String,? extends @Nullable Info<V>>> values) {
+        super(declaringClass, keyType, keyTypeExtensions, keyName, valueType, valueTypeExtensions, valueName, (values != null) ? values : Collections.emptyList());
         return;
       }
 
@@ -754,23 +754,32 @@ public interface Introspectable extends XMLSerializable {
         return this;
       }
 
-      private <T,R> Iterator<? extends R> mapValues(final Iterator<? extends T> iter, final Function<? super T,? extends R> mapper) {
+      private <T,R> Iterable<? extends R> mapValues(final Iterable<? extends T> iterable, final Function<? super T,? extends R> mapper) {
         if (lateBound) {
-          return new Iterator<R>() {
+          return new Iterable<R>() {
 
             @Override
-            public boolean hasNext() {
-              return iter.hasNext();
-            }
+            public Iterator<R> iterator() {
+              return new Iterator<R>() {
+                protected final Iterator<? extends T> iter = iterable.iterator();
 
-            @Override
-            public R next() {
-              return mapper.apply(iter.next());
+                @Override
+                public boolean hasNext() {
+                  return iter.hasNext();
+                }
+
+                @Override
+                public R next() {
+                  return mapper.apply(iter.next());
+                }
+
+              };
+
             }
 
           };
         }
-        return StreamSupport.stream(Spliterators.spliteratorUnknownSize(iter, Spliterator.ORDERED), false).map(mapper).collect(Collectors.toList()).iterator();
+        return StreamSupport.stream(Spliterators.spliteratorUnknownSize(iterable.iterator(), Spliterator.ORDERED), false).map(mapper).collect(Collectors.toList());
       }
 
       /**
@@ -1141,7 +1150,7 @@ public interface Introspectable extends XMLSerializable {
        * <code>values</code>.
        * @return The {@link Builder} this method was invoked on.
        */
-      public <V> Builder<I> primitiveChild(final Class<V> valueType, final boolean valueTypeExtensions, final String propName, final String valueName, final @Nullable Iterator<? extends @Nullable V> values, final Function<? super V,? extends String> valueToString) {
+      public <V> Builder<I> primitiveChild(final Class<V> valueType, final boolean valueTypeExtensions, final String propName, final String valueName, final @Nullable Iterable<? extends @Nullable V> values, final Function<? super V,? extends String> valueToString) {
         return put(propName, new PrimitiveCollection<V>(type, valueType, valueTypeExtensions, valueName, (values != null) ? mapValues(values, (value) -> (value != null) ? valueToString.apply(value) : null) : null));
       }
 
@@ -1158,7 +1167,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public <V> Builder<I> primitiveChild(final Class<V> valueType, final boolean valueTypeExtensions, final String propName, final String valueName, final @Nullable Collection<? extends @Nullable V> values) {
-        return primitiveChild(valueType, valueTypeExtensions, propName, valueName, (values != null) ? values.iterator() : null, Object::toString);
+        return primitiveChild(valueType, valueTypeExtensions, propName, valueName, values, Object::toString);
       }
 
       /**
@@ -1185,24 +1194,8 @@ public interface Introspectable extends XMLSerializable {
        * @param values The child values being added.
        * @return The {@link Builder} this method was invoked on.
        */
-      public <V extends Introspectable> Builder<I> complexChild(final Class<V> valueType, final boolean valueTypeExtensions, final String propName, final String valueName, final @Nullable Iterator<? extends @Nullable V> values) {
+      public <V extends Introspectable> Builder<I> complexChild(final Class<V> valueType, final boolean valueTypeExtensions, final String propName, final String valueName, final @Nullable Iterable<? extends @Nullable V> values) {
         return put(propName, new ComplexCollection<V>(type, valueType, valueTypeExtensions, valueName, (values != null) ? mapValues(values, (value) -> (value != null) ? Introspectable.introspect(valueType, value) : null) : null));
-      }
-
-      /**
-       * Add a {@link Property} with a {@linkplain ComplexCollection complex collection} of values.
-       * 
-       * @param <V> The type of value this collection contains.
-       * @param valueType The {@link Class} of value this collection contains.
-       * @param valueTypeExtensions Does the <code>valueType</code> include
-       * {@linkplain Property#getValueTypeExtensions() extensions}?
-       * @param propName The name which uniquely identifies this property.
-       * @param valueName The name used to describe an <em>individual</em> value.
-       * @param values The child values being added.
-       * @return The {@link Builder} this method was invoked on.
-       */
-      public <V extends Introspectable> Builder<I> complexChild(final Class<V> valueType, final boolean valueTypeExtensions, final String propName, final String valueName, final @Nullable Collection<? extends @Nullable V> values) {
-        return complexChild(valueType, valueTypeExtensions, propName, valueName, (values != null) ? values.iterator() : null);
       }
 
       /**
@@ -1217,7 +1210,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public <V extends Introspectable> Builder<I> complexChild(final Class<V> valueType, final boolean valueTypeExtensions, final String propName, final @Nullable V value) {
-        return complexChild(valueType, valueTypeExtensions, propName, propName, (value != null) ? Collections.singleton(value).iterator() : null);
+        return complexChild(valueType, valueTypeExtensions, propName, propName, (value != null) ? Collections.singleton(value) : null);
       }
 
       /**
@@ -1255,7 +1248,7 @@ public interface Introspectable extends XMLSerializable {
        * <code>values</code>.
        * @return The {@link Builder} this method was invoked on.
        */
-      public <K,V> Builder<I> primitiveChild(final Class<K> keyType, final boolean keyTypeExtensions, final String keyName, final Class<V> valueType, final boolean valueTypeExtensions, final String propName, final String valueName, final @Nullable Iterator<? extends Map.Entry<? extends K,? extends V>> values, final Function<K,String> keyToString, final Function<? super V,? extends String> valueToString) {
+      public <K,V> Builder<I> primitiveChild(final Class<K> keyType, final boolean keyTypeExtensions, final String keyName, final Class<V> valueType, final boolean valueTypeExtensions, final String propName, final String valueName, final @Nullable Iterable<? extends Map.Entry<? extends K,? extends V>> values, final Function<K,String> keyToString, final Function<? super V,? extends String> valueToString) {
         return put(propName, new PrimitiveMap<K,V>(type, keyType, keyTypeExtensions, keyName, valueType, valueTypeExtensions, valueName, (values != null) ? mapValues(values, (entry) -> new AbstractMap.SimpleImmutableEntry<@Nullable String,@Nullable String>((entry.getKey() != null) ? keyToString.apply(Objects.requireNonNull(entry.getKey())) : null, (entry.getValue() != null) ? valueToString.apply(Objects.requireNonNull(entry.getValue())) : null)) : null));
       }
 
@@ -1277,7 +1270,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public <K,V> Builder<I> primitiveChild(final Class<K> keyType, final boolean keyTypeExtensions, final String keyName, final Class<V> valueType, final boolean valueTypeExtensions, final String propName, final String valueName, final @Nullable Map<? extends K,? extends V> values) {
-        return primitiveChild(keyType, keyTypeExtensions, keyName, valueType, valueTypeExtensions, propName, valueName, (values != null) ? values.entrySet().iterator() : null, Object::toString, Object::toString);
+        return primitiveChild(keyType, keyTypeExtensions, keyName, valueType, valueTypeExtensions, propName, valueName, (values != null) ? values.entrySet() : null, Object::toString, Object::toString);
       }
 
       /**
@@ -1298,7 +1291,7 @@ public interface Introspectable extends XMLSerializable {
        * @param keyToString A {@link Function} to create a {@link String} representation of the supplied keys.
        * @return The {@link Builder} this method was invoked on.
        */
-      public <K,V extends Introspectable> Builder<I> complexChild(final Class<K> keyType, final boolean keyTypeExtensions, final String keyName, final Class<V> valueType, final boolean valueTypeExtensions, final String propName, final String valueName, final @Nullable Iterator<? extends Map.Entry<? extends K,? extends V>> values, final Function<? super K,? extends String> keyToString) {
+      public <K,V extends Introspectable> Builder<I> complexChild(final Class<K> keyType, final boolean keyTypeExtensions, final String keyName, final Class<V> valueType, final boolean valueTypeExtensions, final String propName, final String valueName, final @Nullable Iterable<? extends Map.Entry<? extends K,? extends V>> values, final Function<? super K,? extends String> keyToString) {
         return put(propName, new ComplexMap<K,V>(type, keyType, keyTypeExtensions, keyName, valueType, valueTypeExtensions, valueName, (values != null) ? mapValues(values, (entry) -> new AbstractMap.SimpleImmutableEntry<@Nullable String,@Nullable Info<V>>((entry.getKey() != null) ? keyToString.apply(Objects.requireNonNull(entry.getKey())) : null, (entry.getValue() != null) ? Introspectable.introspect(valueType, Objects.requireNonNull(entry.getValue())) : null)) : null));
       }
 
@@ -1320,7 +1313,7 @@ public interface Introspectable extends XMLSerializable {
        * @return The {@link Builder} this method was invoked on.
        */
       public <K,V extends Introspectable> Builder<I> complexChild(final Class<K> keyType, final boolean keyTypeExtensions, final String keyName, final Class<V> valueType, final boolean valueTypeExtensions, final String propName, final String valueName, final @Nullable Map<? extends K,? extends V> values) {
-        return complexChild(keyType, keyTypeExtensions, keyName, valueType, valueTypeExtensions, propName, valueName, (values != null) ? values.entrySet().iterator() : null, Object::toString);
+        return complexChild(keyType, keyTypeExtensions, keyName, valueType, valueTypeExtensions, propName, valueName, (values != null) ? values.entrySet() : null, Object::toString);
       }
 
       /**
