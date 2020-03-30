@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2018 by Chris Hubick. All Rights Reserved.
+ * Copyright 2016-2020 by Chris Hubick. All Rights Reserved.
  * 
  * This work is licensed under the terms of the "GNU AFFERO GENERAL PUBLIC LICENSE" version 3, as published by the Free
  * Software Foundation <http://www.gnu.org/licenses/>, plus additional permissions, a copy of which you should have
@@ -702,7 +702,7 @@ public class XMLStreamParser<@NonNull T> {
       getChildValues().map(Map.Entry::getKey).map(Map.Entry::getKey).map(QName::getLocalPart).forEach(defineField);
       if (injectionSpecs != null) injectionSpecs.keySet().forEach(defineField);
 
-      final Record record = DSL.using(SQLDialect.DEFAULT).newRecord(fields.values().stream().toArray(Field<?>[]::new));
+      final org.jooq.Record record = DSL.using(SQLDialect.DEFAULT).newRecord(fields.values().stream().toArray(Field<?>[]::new));
 
       getAttrs().entrySet().forEach((entry) -> record.<Object> set(Objects.requireNonNull(fields.get(entry.getKey().getLocalPart())), entry.getValue()));
       getChildValues().forEach((entry) -> new AbstractMap.SimpleImmutableEntry<String,Object>(entry.getKey().getKey().getLocalPart(), entry.getValue().toArray((Object[])java.lang.reflect.Array.newInstance(entry.getKey().getValue(), entry.getValue().size()))));

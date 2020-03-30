@@ -13,24 +13,18 @@
   <name>WWW-EEE Utilities - Serialization - Parser</name>
 
   <properties>
-    <jaxws-api.version>2.3.0</jaxws-api.version>
-    <jooq.version>3.11.4</jooq.version>
+    <xml-ws-api.version>2.3.2</xml-ws-api.version>
+    <jooq.version>3.13.1</jooq.version>
     <jool.version>0.9.14</jool.version>
-    <jaxws-rt.version>2.3.0.2</jaxws-rt.version>
+    <xml-ws-rt.version>2.3.2-1</xml-ws-rt.version>
   </properties>
 
   <dependencies>
     <dependency>
-      <groupId>javax.xml.ws</groupId>
-      <artifactId>jaxws-api</artifactId>
-      <version>${jaxws-api.version}</version>
+      <groupId>jakarta.xml.ws</groupId>
+      <artifactId>jakarta.xml.ws-api</artifactId>
+      <version>${xml-ws-api.version}</version>
       <scope>compile</scope>
-      <exclusions>
-        <exclusion>
-          <groupId>javax.xml.bind</groupId>
-          <artifactId>jaxb-api</artifactId>
-        </exclusion>
-      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.jooq</groupId>
@@ -52,34 +46,18 @@
     </dependency>
     <dependency>
       <groupId>com.sun.xml.ws</groupId>
-      <artifactId>jaxws-rt</artifactId>
-      <version>${jaxws-rt.version}</version>
+      <artifactId>rt</artifactId>
+      <version>${xml-ws-rt.version}</version>
       <type>pom</type>
       <scope>runtime</scope>
       <exclusions>
         <exclusion>
-          <groupId>javax.annotation</groupId>
-          <artifactId>javax.annotation-api</artifactId>
+          <groupId>org.glassfish.jaxb</groupId>
+          <artifactId>jaxb-runtime</artifactId>
         </exclusion>
         <exclusion>
-          <groupId>javax.jws</groupId>
-          <artifactId>jsr181-api</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>javax.xml.ws</groupId>
-          <artifactId>jaxws-api</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>javax.xml.soap</groupId>
-          <artifactId>javax.xml.soap-api</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>com.sun.xml.fastinfoset</groupId>
-          <artifactId>FastInfoset</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>org.glassfish.external</groupId>
-          <artifactId>management-api</artifactId>
+          <groupId>org.glassfish.pfl</groupId>
+          <artifactId>pfl-tf</artifactId>
         </exclusion>
         <exclusion>
           <groupId>org.jvnet.mimepull</groupId>
@@ -94,24 +72,16 @@
           <artifactId>ha-api</artifactId>
         </exclusion>
         <exclusion>
-          <groupId>javax.xml.bind</groupId>
-          <artifactId>jaxb-api</artifactId>
-        </exclusion>
-        <exclusion>
           <groupId>org.codehaus.woodstox</groupId>
           <artifactId>stax2-api</artifactId>
         </exclusion>
         <exclusion>
-          <groupId>com.sun.org.apache.xml.internal</groupId>
-          <artifactId>resolver</artifactId>
-        </exclusion>
-        <exclusion>
           <groupId>org.glassfish.gmbal</groupId>
-          <artifactId>gmbal-api-only</artifactId>
+          <artifactId>gmbal</artifactId>
         </exclusion>
         <exclusion>
-          <groupId>org.codehaus.woodstox</groupId>
-          <artifactId>woodstox-core-asl</artifactId>
+          <groupId>com.fasterxml.woodstox</groupId>
+          <artifactId>woodstox-core</artifactId>
         </exclusion>
         <exclusion>
           <groupId>com.sun.xml.stream.buffer</groupId>
@@ -122,12 +92,8 @@
           <artifactId>stax-ex</artifactId>
         </exclusion>
         <exclusion>
-          <groupId>com.sun.xml.bind</groupId>
-          <artifactId>jaxb-impl</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>com.sun.xml.bind</groupId>
-          <artifactId>jaxb-core</artifactId>
+          <groupId>jakarta.annotation</groupId>
+          <artifactId>jakarta.annotation-api</artifactId>
         </exclusion>
       </exclusions>
     </dependency>

@@ -1,5 +1,5 @@
 /*
- * Copyright 2016-2017 by Chris Hubick. All Rights Reserved.
+ * Copyright 2016-2020 by Chris Hubick. All Rights Reserved.
  * 
  * This work is licensed under the terms of the "GNU AFFERO GENERAL PUBLIC LICENSE" version 3, as published by the Free
  * Software Foundation <http://www.gnu.org/licenses/>, plus additional permissions, a copy of which you should have
@@ -19,7 +19,6 @@ import javax.xml.ws.soap.*;
 import org.eclipse.jdt.annotation.*;
 
 import org.junit.*;
-import org.junit.rules.*;
 
 import static org.junit.Assert.*;
 
@@ -29,11 +28,6 @@ import static org.junit.Assert.*;
  */
 @NonNullByDefault
 public class SOAPStreamParserTest {
-  /**
-   * The {@link ExpectedException} for the {@link Test}'s.
-   */
-  @Rule
-  public ExpectedException thrown = ExpectedException.none();
   protected static final SOAPStreamParser<Departure> DEPARTURE_STREAM_PARSER = SOAPStreamParser.buildSchema(URI.create("http://www_eee.net/ns/"))
       .defineSimpleElement("departureYear", Year.class, (ctx, value) -> Year.parse(value), true).defineHeaderElementWithChildBuilder().addChildValueElement("departureYear").completeDefinition()
       .defineStringElement("departing")
@@ -64,15 +58,15 @@ public class SOAPStreamParserTest {
    */
   @Test
   public void testGlobalFaultThrown() throws Exception {
-    thrown.expect(SOAPFaultException.class);
-    thrown.expectMessage("Server went boom.");
-
-    final URL testURL = SOAPStreamParserTest.class.getResource("/net/www_eee/util/serialization/parser/xml/soap/departures_global_fault.xml");
-    try {
-      DEPARTURE_STREAM_PARSER.parse(testURL.openStream());
-    } catch (SOAPStreamParser.ExceptionElementException eee) {
-      throw eee.getCause();
-    }
+    final SOAPFaultException sfe = assertThrows(SOAPFaultException.class, () -> {
+      final URL testURL = SOAPStreamParserTest.class.getResource("/net/www_eee/util/serialization/parser/xml/soap/departures_global_fault.xml");
+      try {
+        DEPARTURE_STREAM_PARSER.parse(testURL.openStream());
+      } catch (SOAPStreamParser.ExceptionElementException eee) {
+        throw eee.getCause();
+      }
+    });
+    assertEquals(sfe.getMessage(), "Server went boom.");
     return;
   }
 
@@ -83,18 +77,18 @@ public class SOAPStreamParserTest {
    */
   @Test
   public void testLocalFaultThrown() throws Exception {
-    thrown.expect(SOAPFaultException.class);
-    thrown.expectMessage("Invalid departure record.");
-
-    final URL testURL = SOAPStreamParserTest.class.getResource("/net/www_eee/util/serialization/parser/xml/soap/departures_local_fault.xml");
-    try {
-      final Iterator<Departure> departures = DEPARTURE_STREAM_PARSER.parse(testURL.openStream());
-      assertEquals("Canada[2001-01-01]", departures.next().toString());
-      assertEquals("USA[2001-02-01]", departures.next().toString());
-      departures.next().toString();
-    } catch (SOAPStreamParser.ExceptionElementException eee) {
-      throw eee.getCause();
-    }
+    final SOAPFaultException sfe = assertThrows(SOAPFaultException.class, () -> {
+      final URL testURL = SOAPStreamParserTest.class.getResource("/net/www_eee/util/serialization/parser/xml/soap/departures_local_fault.xml");
+      try {
+        final Iterator<Departure> departures = DEPARTURE_STREAM_PARSER.parse(testURL.openStream());
+        assertEquals("Canada[2001-01-01]", departures.next().toString());
+        assertEquals("USA[2001-02-01]", departures.next().toString());
+        departures.next().toString();
+      } catch (SOAPStreamParser.ExceptionElementException eee) {
+        throw eee.getCause();
+      }
+    });
+    assertEquals(sfe.getMessage(), "Invalid departure record.");
     return;
   }
 
