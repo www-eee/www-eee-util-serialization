@@ -2,15 +2,15 @@
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
-    <groupId>net.www-eee.util.serialization</groupId>
-    <artifactId>www-eee-util-serialization-parent</artifactId>
+    <groupId>com.hubick.xml-stream-serialization</groupId>
+    <artifactId>xml-stream-serialization-parent</artifactId>
     <version>1.2.0</version>
   </parent>
 
-  <artifactId>www-eee-util-serialization-parser</artifactId>
+  <artifactId>xml-stream-serialization-parser</artifactId>
   <packaging>jar</packaging>
 
-  <name>WWW-EEE Utilities - Serialization - Parser</name>
+  <name>XML Stream Serialization - Parser</name>
 
   <properties>
     <xml-ws-api.version>2.3.2</xml-ws-api.version>

@@ -1,4 +1,4 @@
-module net.www_eee.util.serialization.parser {
+module com.hubick.xml_stream_serialization.parser {
   requires transitive org.eclipse.jdt.annotation;
   requires transitive java.xml;
   requires transitive java.desktop;
@@ -7,6 +7,6 @@ module net.www_eee.util.serialization.parser {
   requires org.jooq;
   requires java.sql;
 
-  exports net.www_eee.util.serialization.parser.xml;
-  exports net.www_eee.util.serialization.parser.xml.soap;
+  exports com.hubick.xml_stream_serialization.parser.xml;
+  exports com.hubick.xml_stream_serialization.parser.xml.soap;
 }

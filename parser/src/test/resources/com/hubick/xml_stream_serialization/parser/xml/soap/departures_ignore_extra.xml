@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope">
+  <env:Header>
+    <h:stuff xmlns:h="https://chris.hubick.com/ns/">
+      <h:ignore>Some text and stuff to ignore.</h:ignore>
+    </h:stuff>
+    <h:departureYear xmlns:h="https://chris.hubick.com/ns/">2001</h:departureYear>
+  </env:Header>
+  <env:Body>
+    <h:departures xmlns:h="https://chris.hubick.com/ns/">
+      <h:ignore>Some text and stuff to ignore.</h:ignore>
+      <h:departure>
+        <h:departing>Canada</h:departing>
+        <h:departureMonthDay>--01-01</h:departureMonthDay>
+      </h:departure>
+      <h:ignore>Some text and stuff to ignore.</h:ignore>
+      <h:departure>
+        <h:departing>USA</h:departing>
+        <h:departureMonthDay>--02-01</h:departureMonthDay>
+      </h:departure>
+      <h:departure>
+        <h:ignore>Some text and stuff to ignore.</h:ignore>
+        <h:departing>Australia</h:departing>
+        <h:departureMonthDay>--03-01</h:departureMonthDay>
+      </h:departure>
+    </h:departures>
+  </env:Body>
+</env:Envelope>

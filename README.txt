@@ -1,5 +1,5 @@
-WWW-EEE Utilities - Serialization
----------------------------------
+XML Stream Serialization
+------------------------
 
 A Java library providing stream-based introspection/serialization/parsing of infinitely large objects using XML.
 

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope">
+  <env:Header>
+    <h:departureYear xmlns:h="https://chris.hubick.com/ns/">2001</h:departureYear>
+  </env:Header>
+  <env:Body>
+    <h:departures xmlns:h="https://chris.hubick.com/ns/">
+      <h:departure>
+        <h:departing>Canada</h:departing>
+        <h:departureMonthDay>--01-01</h:departureMonthDay>
+      </h:departure>
+      <h:departure>
+        <h:departing>USA</h:departing>
+        <h:departureMonthDay>--02-01</h:departureMonthDay>
+      </h:departure>
+      <env:Fault>
+        <env:Code>
+          <env:Value>env:Receiver</env:Value>
+        </env:Code>
+        <env:Reason>
+          <env:Text xml:lang="en-US">Invalid departure record.</env:Text>
+        </env:Reason>
+        <env:Detail>
+          <jaxws:exception xmlns:jaxws="http://jax-ws.dev.java.net/" class="java.sql.SQLException">
+            <jaxws:message>Foreign key violation.</jaxws:message>
+            <jaxws:stackTrace>
+              <jaxws:frame class="org.apache.tomcat.util.net.JIoEndpoint$SocketProcessor" file="JIoEndpoint.java" line="310" method="run" />
+              <jaxws:frame class="java.util.concurrent.ThreadPoolExecutor" file="ThreadPoolExecutor.java" line="1145" method="runWorker" />
+              <jaxws:frame class="java.util.concurrent.ThreadPoolExecutor$Worker" file="ThreadPoolExecutor.java" line="615" method="run" />
+              <jaxws:frame class="java.lang.Thread" file="Thread.java" line="745" method="run" />
+            </jaxws:stackTrace>
+          </jaxws:exception>
+        </env:Detail>
+      </env:Fault>
+      <h:departure>
+        <h:departing>Australia</h:departing>
+        <h:departureMonthDay>--03-01</h:departureMonthDay>
+      </h:departure>
+    </h:departures>
+  </env:Body>
+</env:Envelope>

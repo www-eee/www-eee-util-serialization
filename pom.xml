@@ -1,12 +1,12 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>net.www-eee.util.serialization</groupId>
-  <artifactId>www-eee-util-serialization-parent</artifactId>
+  <groupId>com.hubick.xml-stream-serialization</groupId>
+  <artifactId>xml-stream-serialization-parent</artifactId>
   <version>1.2.0</version>
   <packaging>pom</packaging>
 
-  <name>WWW-EEE Utilities - Serialization (Parent)</name>
+  <name>XML Stream Serialization (Parent)</name>
   <description>A Java library providing stream-based introspection/serialization/parsing of infinitely large objects using XML.</description>
   <licenses>
     <license>
@@ -27,22 +27,22 @@
       <id>hubick</id>
       <name>Chris Hubick</name>
       <email>chris@hubick.com</email>
-      <url>http://chris.hubick.com/</url>
+      <url>https://chris.hubick.com/</url>
     </developer>
   </developers>
 
   <scm>
-    <url>https://github.com/www-eee/www-eee-util-serialization.git</url>
-    <connection>scm:git:git://github.com/www-eee/www-eee-util-serialization.git</connection>
-    <developerConnection>scm:git:git@github.com/www-eee/www-eee-util-serialization.git</developerConnection>
+    <url>https://github.com/hubick/xml-stream-serialization</url>
+    <connection>scm:git:https://github.com/hubick/xml-stream-serialization.git</connection>
+    <developerConnection>scm:git:git@github.com:hubick/xml-stream-serialization.git</developerConnection>
   </scm>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <org.eclipse.jdt.annotation.version>2.2.0</org.eclipse.jdt.annotation.version>
+    <org.eclipse.jdt.annotation.version>2.2.400</org.eclipse.jdt.annotation.version>
     <soap-api.version>1.4.1</soap-api.version>
     <activation-api.version>1.2.2</activation-api.version>
-    <junit.version>4.13</junit.version>
+    <junit.jupiter.version>5.6.2</junit.jupiter.version>
   </properties>
 
   <dependencies>
@@ -59,9 +59,9 @@
       <scope>compile</scope>
     </dependency>
     <dependency>
-      <groupId>junit</groupId>
-      <artifactId>junit</artifactId>
-      <version>${junit.version}</version>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.jupiter.version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -71,7 +71,7 @@
       <plugins>
         <plugin>
           <artifactId>maven-javadoc-plugin</artifactId>
-          <version>3.0.1</version>
+          <version>3.2.0</version>
           <configuration>
             <show>public</show>
             <detectLinks>true</detectLinks>
@@ -93,7 +93,7 @@
       </plugin>
       <plugin>
         <artifactId>maven-assembly-plugin</artifactId>
-        <version>3.2.0</version>
+        <version>3.3.0</version>
         <configuration>
           <descriptorRefs>
             <descriptorRef>project</descriptorRef>

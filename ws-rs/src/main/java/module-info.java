@@ -1,10 +1,10 @@
-module net.www_eee.util.serialization.ws {
+module com.hubick.xml_stream_serialization.ws_rs {
   requires transitive org.eclipse.jdt.annotation;
   requires transitive java.ws.rs;
-  requires transitive net.www_eee.util.serialization;
+  requires transitive com.hubick.xml_stream_serialization;
   requires java.xml.soap;
   requires java.naming;
 
-  exports net.www_eee.util.serialization.ws.rs.provider.xml;
-  exports net.www_eee.util.serialization.ws.rs.provider.xml.soap;
+  exports com.hubick.xml_stream_serialization.ws.rs.provider.xml;
+  exports com.hubick.xml_stream_serialization.ws.rs.provider.xml.soap;
 }
