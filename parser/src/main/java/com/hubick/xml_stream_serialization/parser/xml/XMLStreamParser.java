@@ -1070,18 +1070,25 @@ public class XMLStreamParser<@NonNull T> {
     private final Set<? extends ElementParser<? extends Exception>> childExceptionParsers;
     private final Set<? extends ContentParser<?,?>> childValueParsers;
 
-    public ElementParser(final Class<T> targetValueClass, final QName elementName, final Function<ElementParsingContext,T> targetValueFunction, final boolean saveTargetValue, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @Nullable Collection<? extends ContentParser<?,?>> childValueParsers) {
+    public ElementParser(final Class<T> targetValueClass, final QName elementName, final Function<ElementParsingContext,T> targetValueFunction, final boolean saveTargetValue, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final boolean recursive, final @Nullable Collection<? extends ContentParser<?,?>> childValueParsers) {
       super(StartElement.class, targetValueClass);
       this.elementName = elementName;
       this.targetValueFunction = targetValueFunction;
       this.saveTargetValue = saveTargetValue;
       this.childExceptionParsers = ((childExceptionParsers != null) && (!childExceptionParsers.isEmpty())) ? Collections.unmodifiableSet(new CopyOnWriteArraySet<>(childExceptionParsers)) : Collections.emptySet();
-      this.childValueParsers = ((childValueParsers != null) && (!childValueParsers.isEmpty())) ? Collections.unmodifiableSet(new CopyOnWriteArraySet<>(childValueParsers)) : Collections.emptySet();
+      final CopyOnWriteArraySet<ContentParser<?,?>> childValueParsersCopy = (childValueParsers != null) ? new CopyOnWriteArraySet<>(childValueParsers) : new CopyOnWriteArraySet<>();
+      if (recursive) childValueParsersCopy.add(this);
+      this.childValueParsers = ((childValueParsersCopy != null) && (!childValueParsersCopy.isEmpty())) ? Collections.unmodifiableSet(childValueParsersCopy) : Collections.emptySet();
       return;
     }
 
-    public ElementParser(final Class<T> targetValueClass, final QName elementName, final Function<ElementParsingContext,T> targetValueFunction, final boolean saveTargetValue, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @NonNull ContentParser<?,?> @Nullable... childValueParsers) {
-      this(targetValueClass, elementName, targetValueFunction, saveTargetValue, childExceptionParsers, ((childValueParsers != null) && (childValueParsers.length > 0)) ? Arrays.asList(childValueParsers) : null);
+    public ElementParser(final Class<T> targetValueClass, final QName elementName, final Function<ElementParsingContext,T> targetValueFunction, final boolean saveTargetValue, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final boolean recursive, final @NonNull ContentParser<?,?> @Nullable... childValueParsers) {
+      this(targetValueClass, elementName, targetValueFunction, saveTargetValue, childExceptionParsers, recursive, ((childValueParsers != null) && (childValueParsers.length > 0)) ? Arrays.asList(childValueParsers) : null);
+      return;
+    }
+
+    public ElementParser(final Class<T> targetValueClass, final QName elementName, final Function<ElementParsingContext,T> targetValueFunction, final boolean saveTargetValue) {
+      this(targetValueClass, elementName, targetValueFunction, saveTargetValue, null, false, (@Nullable Collection<? extends ContentParser<?,?>>)null);
       return;
     }
 
@@ -1279,8 +1286,8 @@ public class XMLStreamParser<@NonNull T> {
 
   protected static class ContainerElementParser extends ElementParser<StartElement> {
 
-    public ContainerElementParser(final QName elementName, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @NonNull ElementParser<?> @Nullable... childValueParsers) {
-      super(StartElement.class, elementName, (context) -> context.getStartElement(), false, childExceptionParsers, childValueParsers);
+    public ContainerElementParser(final QName elementName, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final boolean recursive, final @NonNull ElementParser<?> @Nullable... childValueParsers) {
+      super(StartElement.class, elementName, (context) -> context.getStartElement(), false, childExceptionParsers, recursive, childValueParsers);
       return;
     }
 
@@ -1295,13 +1302,13 @@ public class XMLStreamParser<@NonNull T> {
   protected static class WrapperElementParser<@NonNull T> extends ElementParser<T> {
 
     @SafeVarargs
-    public WrapperElementParser(final Class<T> targetValueClass, final QName elementName, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @NonNull ElementParser<? extends T> @Nullable... wrappedElementParsers) {
-      super(targetValueClass, elementName, (ctx) -> ctx.getRequiredChildValue((QName)null, targetValueClass), false, childExceptionParsers, wrappedElementParsers);
+    public WrapperElementParser(final Class<T> targetValueClass, final QName elementName, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final boolean recursive, final @NonNull ElementParser<? extends T> @Nullable... wrappedElementParsers) {
+      super(targetValueClass, elementName, (ctx) -> ctx.getRequiredChildValue((QName)null, targetValueClass), false, childExceptionParsers, recursive, wrappedElementParsers);
       return;
     }
 
-    public WrapperElementParser(final QName elementName, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final ElementParser<T> wrappedElementParser) {
-      this(wrappedElementParser.getTargetValueClass(), elementName, childExceptionParsers, wrappedElementParser);
+    public WrapperElementParser(final QName elementName, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final boolean recursive, final ElementParser<T> wrappedElementParser) {
+      this(wrappedElementParser.getTargetValueClass(), elementName, childExceptionParsers, recursive, wrappedElementParser);
       return;
     }
 
@@ -1311,7 +1318,7 @@ public class XMLStreamParser<@NonNull T> {
     private static final CharactersParser CHARACTERS_PARSER = new CharactersParser(true, true, false);
 
     public SimpleElementParser(final Class<T> targetValueClass, final QName elementName, final BiFunction<ElementParsingContext,? super String,? extends T> targetValueFunction, final boolean saveTargetValue) {
-      super(targetValueClass, elementName, (ctx) -> targetValueFunction.apply(ctx, cast(ctx).getChildValues(CHARACTERS_PARSER).collect(Collectors.joining())), saveTargetValue, null, CHARACTERS_PARSER);
+      super(targetValueClass, elementName, (ctx) -> targetValueFunction.apply(ctx, cast(ctx).getChildValues(CHARACTERS_PARSER).collect(Collectors.joining())), saveTargetValue, null, false, CHARACTERS_PARSER);
       return;
     }
 
@@ -1333,8 +1340,8 @@ public class XMLStreamParser<@NonNull T> {
 
   protected static class InjectedTargetElementParser<@NonNull T> extends ElementParser<T> {
 
-    public InjectedTargetElementParser(final Class<T> targetValueClass, final Class<? extends T> targetImplClass, final QName elementName, final boolean saveTargetValue, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @Nullable Collection<? extends ElementParser<?>> childValueParsers, final @Nullable Map<String,Function<ElementParsingContext,@Nullable Object>> injectionSpecs) throws IllegalArgumentException {
-      super(targetValueClass, elementName, (ctx) -> ctx.getInjectedValue(targetImplClass, injectionSpecs), saveTargetValue, childExceptionParsers, childValueParsers);
+    public InjectedTargetElementParser(final Class<T> targetValueClass, final Class<? extends T> targetImplClass, final QName elementName, final boolean saveTargetValue, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final boolean recursive, final @Nullable Collection<? extends ElementParser<?>> childValueParsers, final @Nullable Map<String,Function<ElementParsingContext,@Nullable Object>> injectionSpecs) throws IllegalArgumentException {
+      super(targetValueClass, elementName, (ctx) -> ctx.getInjectedValue(targetImplClass, injectionSpecs), saveTargetValue, childExceptionParsers, recursive, childValueParsers);
       return;
     }
 
@@ -1378,9 +1385,9 @@ public class XMLStreamParser<@NonNull T> {
    * <p>
    * Note that this API doesn't provide any way to define elements having mixed content, containing both
    * {@linkplain #defineSimpleElement(String, Class, BiFunction, boolean) child character data} and
-   * {@linkplain #defineElementWithChildBuilder(String, Class, Function, boolean) child elements}. If your schema
-   * requires parsing those, you will need to write your own XMLStreamParser subclass and define those elements using
-   * the internal API.
+   * {@linkplain #defineElementWithChildBuilder(String, Class, Function, boolean, boolean) child elements}. If your
+   * schema requires parsing those, you will need to write your own XMLStreamParser subclass and define those elements
+   * using the internal API.
    * </p>
    * 
    * @param <SB> The concrete class of schema builder being used, which will be returned by all builder methods
@@ -1644,7 +1651,7 @@ public class XMLStreamParser<@NonNull T> {
      * type, you should define your element using the {@linkplain #defineStringElement(String, boolean) string method}.
      * You should also be using a different method to define your element if it
      * {@linkplain #defineElement(String, Class, Function) contains no child data}, or
-     * {@linkplain #defineElementWithChildBuilder(String, Class, Function, boolean) contains child elements}.
+     * {@linkplain #defineElementWithChildBuilder(String, Class, Function, boolean, boolean) contains child elements}.
      * </p>
      * 
      * @param <ET> The type of target value which will be provided when the defined element is parsed.
@@ -1678,7 +1685,7 @@ public class XMLStreamParser<@NonNull T> {
      * type, you should define your element using the {@linkplain #defineStringElement(String, boolean) string method}.
      * You should also be using a different method to define your element if it
      * {@linkplain #defineElement(String, Class, Function) contains no child data}, or
-     * {@linkplain #defineElementWithChildBuilder(String, Class, Function, boolean) contains child elements}.
+     * {@linkplain #defineElementWithChildBuilder(String, Class, Function, boolean, boolean) contains child elements}.
      * </p>
      * 
      * @param <ET> The type of target value which will be provided when the defined element is parsed.
@@ -1750,10 +1757,10 @@ public class XMLStreamParser<@NonNull T> {
      * <p>
      * This method is for defining elements without any child data, if your element contains any child data, you should
      * be defining it using a different method, such as the method to
-     * {@linkplain #defineElementWithChildBuilder(String, Class, Function, boolean) build an element definition
+     * {@linkplain #defineElementWithChildBuilder(String, Class, Function, boolean, boolean) build an element definition
      * containing child elements}, or the method to {@linkplain #defineSimpleElement(String, Class, BiFunction, boolean)
      * define a simple element containing only character data}. Also, you should be using a different method to
-     * {@linkplain #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean) define an element producing a
+     * {@linkplain #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean, boolean) define an element producing a
      * target value which can be constructed using injection}.
      * </p>
      * 
@@ -1767,13 +1774,13 @@ public class XMLStreamParser<@NonNull T> {
      * {@link XMLStreamParser.ElementParsingContext ElementParsingContext} and must return the calculated target value
      * for the parsed element.
      * @return The {@link XMLStreamParser.SchemaBuilder SchemaBuilder} this method was invoked on.
-     * @see #defineElementWithChildBuilder(String, Class, Function, boolean)
-     * @see #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean)
+     * @see #defineElementWithChildBuilder(String, Class, Function, boolean, boolean)
+     * @see #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean, boolean)
      * @see #defineSimpleElement(String, Class, BiFunction, boolean)
      */
     public final <@NonNull ET> SB defineElement(final String elementLocalName, final Class<ET> targetValueClass, final Function<ElementParsingContext,ET> targetValueFunction) {
       final QName elementName = qn(elementLocalName);
-      return addParser(new ElementParser<ET>(targetValueClass, elementName, targetValueFunction, false, null));
+      return addParser(new ElementParser<ET>(targetValueClass, elementName, targetValueFunction, false, null, false));
     }
 
     /**
@@ -1788,7 +1795,7 @@ public class XMLStreamParser<@NonNull T> {
      * {@linkplain #defineElement(String, Class, Function) define an element with no child data}, or the method to
      * {@linkplain #defineSimpleElement(String, Class, BiFunction, boolean) define a simple element containing only
      * character data}. Also, you should be using a different method to
-     * {@linkplain #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean) define an element producing a
+     * {@linkplain #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean, boolean) define an element producing a
      * target value which can be constructed using injection}.
      * </p>
      * 
@@ -1804,18 +1811,19 @@ public class XMLStreamParser<@NonNull T> {
      * @param saveTargetValue Should target values calculated for the defined element be saved by the parser and then
      * made available (via the {@link XMLStreamParser.ElementParsingContext ElementParsingContext}) to the target value
      * calculation functions of all subsequent elements parsed within the current document?
+     * @param recursive Should the defined element augment it's list of potential child elements with <em>itself</em>?
      * @return A {@link XMLStreamParser.SchemaBuilder.ChildElementListBuilder ChildElementListBuilder} which you can use
      * to define which elements this definition will have as children.
      * @see #defineElement(String, Class, Function)
-     * @see #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean)
+     * @see #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean, boolean)
      * @see #defineSimpleElement(String, Class, BiFunction, boolean)
      */
-    public final <@NonNull ET> ChildElementListBuilder defineElementWithChildBuilder(final String elementLocalName, final Class<ET> targetValueClass, final Function<ElementParsingContext,ET> targetValueFunction, final boolean saveTargetValue) {
+    public final <@NonNull ET> ChildElementListBuilder defineElementWithChildBuilder(final String elementLocalName, final Class<ET> targetValueClass, final Function<ElementParsingContext,ET> targetValueFunction, final boolean saveTargetValue, final boolean recursive) {
       return new ChildElementListBuilder(null, null) {
 
         @Override
         public SB completeDefinition() {
-          addParser(new ElementParser<ET>(targetValueClass, qn(elementLocalName), targetValueFunction, saveTargetValue, childExceptionParsers, childValueParsers));
+          addParser(new ElementParser<ET>(targetValueClass, qn(elementLocalName), targetValueFunction, saveTargetValue, childExceptionParsers, recursive, childValueParsers));
           return Objects.requireNonNull(schemaBuilderType.cast(SchemaBuilder.this));
         }
 
@@ -1840,7 +1848,7 @@ public class XMLStreamParser<@NonNull T> {
      * <p>
      * This method is for defining injected elements without any children, if your element contains children, you should
      * be defining it using the method to
-     * {@linkplain #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean) build an injected element
+     * {@linkplain #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean, boolean) build an injected element
      * definition containing child elements}. If you want to construct the target value yourself, without using
      * injection, you should be using the method to {@linkplain #defineElement(String, Class, Function) define an
      * element with no child data}.
@@ -1856,12 +1864,12 @@ public class XMLStreamParser<@NonNull T> {
      * @return The {@link XMLStreamParser.SchemaBuilder SchemaBuilder} this method was invoked on.
      * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
      * @see #defineElementWithInjectedTarget(Class)
-     * @see #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean)
+     * @see #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean, boolean)
      * @see #defineElement(String, Class, Function)
      */
     public final <@NonNull ET> SB defineElementWithInjectedTarget(final String injectedElementLocalName, final Class<ET> targetValueClass, final Class<? extends ET> targetImplClass) {
       final QName injectedElementName = qn(injectedElementLocalName);
-      return addParser(new InjectedTargetElementParser<ET>(targetValueClass, targetImplClass, injectedElementName, false, null, null, snapshotInjectionSpecs(globalInjectionSpecs, null)));
+      return addParser(new InjectedTargetElementParser<ET>(targetValueClass, targetImplClass, injectedElementName, false, null, false, null, snapshotInjectionSpecs(globalInjectionSpecs, null)));
     }
 
     /**
@@ -1874,7 +1882,7 @@ public class XMLStreamParser<@NonNull T> {
      * <p>
      * This method is for defining injected elements without any children, if your element contains children, you should
      * be defining it using the method to
-     * {@linkplain #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean) build an injected element
+     * {@linkplain #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean, boolean) build an injected element
      * definition containing child elements}. If you want to construct the target value yourself, without using
      * injection, you should be using the method to {@linkplain #defineElement(String, Class, Function) define an
      * element with no child data}.
@@ -1888,7 +1896,7 @@ public class XMLStreamParser<@NonNull T> {
      * @return The {@link XMLStreamParser.SchemaBuilder SchemaBuilder} this method was invoked on.
      * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
      * @see #defineElementWithInjectedTarget(String, Class, Class)
-     * @see #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean)
+     * @see #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean, boolean)
      * @see #defineElement(String, Class, Function)
      */
     public final <@NonNull ET> SB defineElementWithInjectedTarget(final Class<ET> targetValueClass) {
@@ -1907,7 +1915,7 @@ public class XMLStreamParser<@NonNull T> {
      * injection. If this is not the case for the element being defined, you should be using the other method to
      * {@linkplain #defineElementWithInjectedTarget(String, Class, Class) define an injected element without children}.
      * If you want to construct the target value yourself, without using injection, you should be using the method to
-     * {@linkplain #defineElementWithChildBuilder(String, Class, Function, boolean) build an element definition
+     * {@linkplain #defineElementWithChildBuilder(String, Class, Function, boolean, boolean) build an element definition
      * containing child elements}.
      * </p>
      * 
@@ -1921,6 +1929,7 @@ public class XMLStreamParser<@NonNull T> {
      * @param saveTargetValue Should target values calculated for the defined element be saved by the parser and then
      * made available (via the {@link XMLStreamParser.ElementParsingContext ElementParsingContext}) to the target value
      * calculation functions of all subsequent elements parsed within the current document?
+     * @param recursive Should the defined element augment it's list of potential child elements with <em>itself</em>?
      * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder} which
      * you can use to reference other existing element definitions this one will have as children and specify how those
      * should be injected into the <code>targetValueClass</code>.
@@ -1928,14 +1937,14 @@ public class XMLStreamParser<@NonNull T> {
      * @see #defineElementWithInjectedTargetBuilder(String, Class)
      * @see #defineElementWithInjectedTargetBuilder(Class)
      * @see #defineElementWithInjectedTarget(String, Class, Class)
-     * @see #defineElementWithChildBuilder(String, Class, Function, boolean)
+     * @see #defineElementWithChildBuilder(String, Class, Function, boolean, boolean)
      */
-    public final <@NonNull ET> InjectedTargetElementBuilder<ET> defineElementWithInjectedTargetBuilder(final String injectedElementLocalName, final Class<ET> targetValueClass, final Class<? extends ET> targetImplClass, final boolean saveTargetValue) {
+    public final <@NonNull ET> InjectedTargetElementBuilder<ET> defineElementWithInjectedTargetBuilder(final String injectedElementLocalName, final Class<ET> targetValueClass, final Class<? extends ET> targetImplClass, final boolean saveTargetValue, final boolean recursive) {
       return new InjectedTargetElementBuilder<ET>(null, null) {
 
         @Override
         public SB completeDefinition() {
-          addParser(new InjectedTargetElementParser<ET>(targetValueClass, targetImplClass, qn(injectedElementLocalName), saveTargetValue, childExceptionParsers, childValueParsers, snapshotInjectionSpecs(globalInjectionSpecs, injectionSpecs)));
+          addParser(new InjectedTargetElementParser<ET>(targetValueClass, targetImplClass, qn(injectedElementLocalName), saveTargetValue, childExceptionParsers, recursive, childValueParsers, snapshotInjectionSpecs(globalInjectionSpecs, injectionSpecs)));
           return Objects.requireNonNull(schemaBuilderType.cast(SchemaBuilder.this));
         }
 
@@ -1954,7 +1963,7 @@ public class XMLStreamParser<@NonNull T> {
      * injection. If this is not the case for the element being defined, you should be using the other method to
      * {@linkplain #defineElementWithInjectedTarget(String, Class, Class) define an injected element without children}.
      * If you want to construct the target value yourself, without using injection, you should be using the method to
-     * {@linkplain #defineElementWithChildBuilder(String, Class, Function, boolean) build an element definition
+     * {@linkplain #defineElementWithChildBuilder(String, Class, Function, boolean, boolean) build an element definition
      * containing child elements}.
      * </p>
      * 
@@ -1967,13 +1976,13 @@ public class XMLStreamParser<@NonNull T> {
      * you can use to reference other existing element definitions this one will have as children and specify how those
      * should be injected into the <code>targetValueClass</code>.
      * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
-     * @see #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean)
+     * @see #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean, boolean)
      * @see #defineElementWithInjectedTargetBuilder(Class)
      * @see #defineElementWithInjectedTarget(String, Class, Class)
-     * @see #defineElementWithChildBuilder(String, Class, Function, boolean)
+     * @see #defineElementWithChildBuilder(String, Class, Function, boolean, boolean)
      */
     public final <@NonNull ET> InjectedTargetElementBuilder<ET> defineElementWithInjectedTargetBuilder(final String injectedElementLocalName, final Class<ET> targetValueClass) {
-      return defineElementWithInjectedTargetBuilder(injectedElementLocalName, targetValueClass, targetValueClass, false);
+      return defineElementWithInjectedTargetBuilder(injectedElementLocalName, targetValueClass, targetValueClass, false, false);
     }
 
     /**
@@ -1988,7 +1997,7 @@ public class XMLStreamParser<@NonNull T> {
      * injection. If this is not the case for the element being defined, you should be using the other method to
      * {@linkplain #defineElementWithInjectedTarget(String, Class, Class) define an injected element without children}.
      * If you want to construct the target value yourself, without using injection, you should be using the method to
-     * {@linkplain #defineElementWithChildBuilder(String, Class, Function, boolean) build an element definition
+     * {@linkplain #defineElementWithChildBuilder(String, Class, Function, boolean, boolean) build an element definition
      * containing child elements}.
      * </p>
      * 
@@ -2001,13 +2010,13 @@ public class XMLStreamParser<@NonNull T> {
      * you can use to reference other existing element definitions this one will have as children and specify how those
      * should be injected into the <code>targetValueClass</code>.
      * @see XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map)
-     * @see #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean)
+     * @see #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean, boolean)
      * @see #defineElementWithInjectedTargetBuilder(String, Class)
      * @see #defineElementWithInjectedTarget(String, Class, Class)
-     * @see #defineElementWithChildBuilder(String, Class, Function, boolean)
+     * @see #defineElementWithChildBuilder(String, Class, Function, boolean, boolean)
      */
     public final <@NonNull ET> InjectedTargetElementBuilder<ET> defineElementWithInjectedTargetBuilder(final Class<ET> targetValueClass) {
-      return defineElementWithInjectedTargetBuilder(targetValueClass.getSimpleName(), targetValueClass, targetValueClass, false);
+      return defineElementWithInjectedTargetBuilder(targetValueClass.getSimpleName(), targetValueClass, targetValueClass, false, false);
     }
 
     /**
@@ -2036,7 +2045,7 @@ public class XMLStreamParser<@NonNull T> {
      * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
      */
     public final <@NonNull ET> SB defineWrapperElement(final String wrapperElementLocalName, final Class<ET> targetValueClass, final @Nullable Set<QName> childExceptionElementNames, final @NonNull QName @Nullable... wrappedElementNames) throws NoSuchElementException {
-      return addParser(new WrapperElementParser<ET>(targetValueClass, qn(wrapperElementLocalName), (childExceptionElementNames != null) ? new CopyOnWriteArraySet<>(Arrays.asList(getParsersWithTargetType(Exception.class, childExceptionElementNames.stream().toArray((n) -> new QName[n])))) : null, getParsersWithTargetType(targetValueClass, wrappedElementNames)));
+      return addParser(new WrapperElementParser<ET>(targetValueClass, qn(wrapperElementLocalName), (childExceptionElementNames != null) ? new CopyOnWriteArraySet<>(Arrays.asList(getParsersWithTargetType(Exception.class, childExceptionElementNames.stream().toArray((n) -> new QName[n])))) : null, false, getParsersWithTargetType(targetValueClass, wrappedElementNames)));
     }
 
     /**
@@ -2087,7 +2096,7 @@ public class XMLStreamParser<@NonNull T> {
 
         @Override
         public SB completeDefinition() {
-          addParser(new ContainerElementParser(qn(containerElementLocalName), childExceptionParsers, (!childValueParsers.isEmpty()) ? childValueParsers.stream().toArray((n) -> new ElementParser<?>[n]) : null));
+          addParser(new ContainerElementParser(qn(containerElementLocalName), childExceptionParsers, false, (!childValueParsers.isEmpty()) ? childValueParsers.stream().toArray((n) -> new ElementParser<?>[n]) : null));
           return Objects.requireNonNull(schemaBuilderType.cast(SchemaBuilder.this));
         }
 
@@ -2421,7 +2430,7 @@ public class XMLStreamParser<@NonNull T> {
 
     /**
      * This class is used during the
-     * {@linkplain XMLStreamParser.SchemaBuilder#defineElementWithInjectedTargetBuilder(String, Class, Class, boolean)
+     * {@linkplain XMLStreamParser.SchemaBuilder#defineElementWithInjectedTargetBuilder(String, Class, Class, boolean, boolean)
      * definition of an injected element} in order to construct a list of element definitions which should become it's
      * children and to create <code>injectionSpecs</code> customizing how the
      * {@linkplain XMLStreamParser.ElementParsingContext#getInjectedValue(Class, Map) injection} should be performed.

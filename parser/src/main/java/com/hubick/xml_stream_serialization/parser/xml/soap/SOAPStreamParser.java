@@ -8,6 +8,7 @@
 
 package com.hubick.xml_stream_serialization.parser.xml.soap;
 
+import java.lang.reflect.*;
 import java.net.*;
 import java.util.*;
 import java.util.function.*;
@@ -23,7 +24,7 @@ import com.hubick.xml_stream_serialization.parser.xml.*;
 
 
 /**
- * An {@link XMLStreamParser} with additional support for {@linkplain #buildSchema(URI) defining}
+ * An {@link XMLStreamParser} with additional support for {@linkplain #buildSOAP12Schema(URI) defining}
  * {@linkplain SOAPConstants#URI_NS_SOAP_1_2_ENVELOPE SOAP} elements.
  *
  * @param <T> The type of target values to be streamed.
@@ -33,35 +34,63 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
   /**
    * A {@link QName} constant for the {@link SOAPConstants#URI_NS_SOAP_1_2_ENVELOPE SOAP} <code>Envelope</code> element.
    */
-  public static final QName ENVELOPE_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Envelope");
+  public static final QName SOAP_1_2_ENVELOPE_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Envelope");
   /**
    * A {@link QName} constant for the {@link SOAPConstants#URI_NS_SOAP_1_2_ENVELOPE SOAP} <code>Header</code> element.
    */
-  public static final QName HEADER_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Header");
+  public static final QName SOAP_1_2_HEADER_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Header");
   /**
    * A {@link QName} constant for the {@link SOAPConstants#URI_NS_SOAP_1_2_ENVELOPE SOAP} <code>Body</code> element.
    */
-  public static final QName BODY_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Body");
+  public static final QName SOAP_1_2_BODY_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Body");
   /**
    * A {@link QName} constant for the {@link SOAPConstants#URI_NS_SOAP_1_2_ENVELOPE SOAP} <code>Value</code> element.
    */
-  public static final QName VALUE_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Value");
+  public static final QName SOAP_1_2_VALUE_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Value");
   /**
    * A {@link QName} constant for the {@link SOAPConstants#URI_NS_SOAP_1_2_ENVELOPE SOAP} <code>Code</code> element.
    */
-  public static final QName CODE_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Code");
+  public static final QName SOAP_1_2_CODE_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Code");
   /**
    * A {@link QName} constant for the {@link SOAPConstants#URI_NS_SOAP_1_2_ENVELOPE SOAP} <code>Text</code> element.
    */
-  public static final QName TEXT_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Text");
+  public static final QName SOAP_1_2_TEXT_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Text");
   /**
    * A {@link QName} constant for the {@link SOAPConstants#URI_NS_SOAP_1_2_ENVELOPE SOAP} <code>Reason</code> element.
    */
-  public static final QName REASON_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Reason");
+  public static final QName SOAP_1_2_REASON_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Reason");
+  /**
+   * A {@link QName} constant for the {@link SOAPConstants#URI_NS_SOAP_1_2_ENVELOPE SOAP} <code>Detail</code> element.
+   */
+  public static final QName SOAP_1_2_DETAIL_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Detail");
   /**
    * A {@link QName} constant for the {@link SOAPConstants#URI_NS_SOAP_1_2_ENVELOPE SOAP} <code>Fault</code> element.
    */
-  public static final QName FAULT_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Fault");
+  public static final QName SOAP_1_2_FAULT_QNAME = new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, "Fault");
+  /**
+   * The identifier for the JAX-WS namespace.
+   */
+  public static final String URI_NS_JAX_WS = "http://jax-ws.dev.java.net/";
+  /**
+   * A {@link QName} constant for the {@link #URI_NS_JAX_WS JAX-WS} <code>message</code> element.
+   */
+  public static final QName JAX_WS_MESSAGE_QNAME = new QName(URI_NS_JAX_WS, "message");
+  /**
+   * A {@link QName} constant for the {@link #URI_NS_JAX_WS JAX-WS} <code>cause</code> element.
+   */
+  public static final QName JAX_WS_CAUSE_QNAME = new QName(URI_NS_JAX_WS, "cause");
+  /**
+   * A {@link QName} constant for the {@link #URI_NS_JAX_WS JAX-WS} <code>frame</code> element.
+   */
+  public static final QName JAX_WS_FRAME_QNAME = new QName(URI_NS_JAX_WS, "frame");
+  /**
+   * A {@link QName} constant for the {@link #URI_NS_JAX_WS JAX-WS} <code>stackTrace</code> element.
+   */
+  public static final QName JAX_WS_STACK_TRACE_QNAME = new QName(URI_NS_JAX_WS, "stackTrace");
+  /**
+   * A {@link QName} constant for the {@link #URI_NS_JAX_WS JAX-WS} <code>exception</code> element.
+   */
+  public static final QName JAX_WS_EXCEPTION_QNAME = new QName(URI_NS_JAX_WS, "exception");
   protected static final SOAPFactory SOAP_FACTORY;
   static {
     try {
@@ -70,24 +99,79 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
       throw new RuntimeException(se);
     }
   }
-  protected static final SimpleElementParser<QName> VALUE_ELEMENT_PARSER = new SimpleElementParser<>(QName.class, VALUE_QNAME, (s) -> new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, s.substring(s.indexOf(':') + 1), s.substring(0, s.indexOf(':'))), false);
-  private static final WrapperElementParser<QName> CODE_ELEMENT_PARSER = new WrapperElementParser<>(CODE_QNAME, null, VALUE_ELEMENT_PARSER);
-  protected static final StringElementParser TEXT_ELEMENT_PARSER = new StringElementParser(TEXT_QNAME, false);
-  private static final WrapperElementParser<String> REASON_ELEMENT_PARSER = new WrapperElementParser<>(REASON_QNAME, null, TEXT_ELEMENT_PARSER);
-  protected static final ElementParser<SOAPFaultException> FAULT_ELEMENT_PARSER = new ElementParser<>(SOAPFaultException.class, FAULT_QNAME, (ctx) -> {
+  protected static final SimpleElementParser<QName> SOAP_1_2_VALUE_ELEMENT_PARSER = new SimpleElementParser<>(QName.class, SOAP_1_2_VALUE_QNAME, (s) -> new QName(SOAPConstants.URI_NS_SOAP_1_2_ENVELOPE, s.substring(s.indexOf(':') + 1), s.substring(0, s.indexOf(':'))), false);
+  private static final WrapperElementParser<QName> SOAP_1_2_CODE_ELEMENT_PARSER = new WrapperElementParser<>(SOAP_1_2_CODE_QNAME, null, false, SOAP_1_2_VALUE_ELEMENT_PARSER);
+  protected static final StringElementParser SOAP_1_2_TEXT_ELEMENT_PARSER = new StringElementParser(SOAP_1_2_TEXT_QNAME, false);
+  private static final WrapperElementParser<String> SOAP_1_2_REASON_ELEMENT_PARSER = new WrapperElementParser<>(SOAP_1_2_REASON_QNAME, null, false, SOAP_1_2_TEXT_ELEMENT_PARSER);
+  protected static final StringElementParser JAX_WS_MESSAGE_ELEMENT_PARSER = new StringElementParser(JAX_WS_MESSAGE_QNAME, false);
+  protected static final ElementParser<StackTraceElement> JAX_WS_FRAME_ELEMENT_PARSER = new ElementParser<>(StackTraceElement.class, JAX_WS_FRAME_QNAME, (ctx) -> new StackTraceElement(ctx.getRequiredAttr("class"), ctx.getRequiredAttr("method"), ctx.getAttrOrNull("file"), ctx.getOptionalAttr("line", Integer::valueOf).orElse(-1)), false);
+  protected static final ElementParser<StackTraceElement[]> JAX_WS_STACK_TRACE_ELEMENT_PARSER = new ElementParser<>(StackTraceElement[].class, JAX_WS_STACK_TRACE_QNAME, (ctx) -> ctx.getChildValues(JAX_WS_FRAME_QNAME, StackTraceElement.class).toArray(StackTraceElement[]::new), false, null, false, JAX_WS_FRAME_ELEMENT_PARSER);
+  protected static final ElementParser<Throwable> JAX_WS_CAUSE_ELEMENT_PARSER = new ElementParser<>(Throwable.class, JAX_WS_CAUSE_QNAME, (ctx) -> createThrowable(ctx.getRequiredAttr("class"), ctx.getChildValueOrNull(JAX_WS_MESSAGE_QNAME, String.class), ctx.getChildValueOrNull(JAX_WS_STACK_TRACE_QNAME, StackTraceElement[].class), ctx.getChildValueOrNull(JAX_WS_CAUSE_QNAME, Throwable.class)), false, null, true, JAX_WS_MESSAGE_ELEMENT_PARSER, JAX_WS_STACK_TRACE_ELEMENT_PARSER);
+  protected static final ElementParser<Throwable> JAX_WS_EXCEPTION_ELEMENT_PARSER = new ElementParser<>(Throwable.class, JAX_WS_EXCEPTION_QNAME, (ctx) -> createThrowable(ctx.getRequiredAttr("class"), ctx.getChildValueOrNull(JAX_WS_MESSAGE_QNAME, String.class), ctx.getChildValueOrNull(JAX_WS_STACK_TRACE_QNAME, StackTraceElement[].class), ctx.getChildValueOrNull(JAX_WS_CAUSE_QNAME, Throwable.class)), false, null, true, JAX_WS_MESSAGE_ELEMENT_PARSER, JAX_WS_STACK_TRACE_ELEMENT_PARSER, JAX_WS_CAUSE_ELEMENT_PARSER);
+  private static final WrapperElementParser<Throwable> SOAP_1_2_DETAIL_ELEMENT_PARSER = new WrapperElementParser<>(SOAP_1_2_DETAIL_QNAME, null, false, JAX_WS_EXCEPTION_ELEMENT_PARSER);
+  protected static final ElementParser<SOAPFaultException> SOAP_1_2_FAULT_ELEMENT_PARSER = new ElementParser<>(SOAPFaultException.class, SOAP_1_2_FAULT_QNAME, (ctx) -> {
     final SOAPFault fault;
     try {
-      fault = SOAP_FACTORY.createFault(cast(ctx).getRequiredChildValue(REASON_ELEMENT_PARSER), cast(ctx).getRequiredChildValue(CODE_ELEMENT_PARSER));
+      fault = SOAP_FACTORY.createFault(cast(ctx).getRequiredChildValue(SOAP_1_2_REASON_ELEMENT_PARSER), cast(ctx).getRequiredChildValue(SOAP_1_2_CODE_ELEMENT_PARSER));
     } catch (SOAPException soape) {
       throw ctx.createElementValueException(soape);
     }
-    return new SOAPFaultException(fault);
-  }, false, null, CODE_ELEMENT_PARSER, REASON_ELEMENT_PARSER);
+    final SOAPFaultException exception = new SOAPFaultException(fault);
+    ctx.getOptionalChildValue(SOAP_1_2_DETAIL_QNAME, Throwable.class).ifPresent((cause) -> exception.initCause(cause));
+    return exception;
+  }, false, null, false, SOAP_1_2_CODE_ELEMENT_PARSER, SOAP_1_2_REASON_ELEMENT_PARSER, SOAP_1_2_DETAIL_ELEMENT_PARSER);
 
   @SafeVarargs
   protected SOAPStreamParser(final Class<T> targetValueClass, final Set<EnvelopeElementParser> envelopeParsers, final ContainerElementParser targetContainerElementParser, final @NonNull ElementParser<? extends T>... targetValueParsers) {
     super(targetValueClass, envelopeParsers, targetContainerElementParser, targetValueParsers);
-    //TODO return; // https://bugs.openjdk.java.net/browse/JDK-8036775
+    return;
+  }
+
+  protected static final <T> Optional<Constructor<T>> getOptionalConstructor(final Class<T> resultClass, final Class<?>... parameterTypes) throws SecurityException {
+    try {
+      return Optional.of(resultClass.getConstructor(parameterTypes));
+    } catch (NoSuchMethodException nsme) {
+      return Optional.empty();
+    }
+  }
+
+  protected static final <T extends Throwable> T createThrowable(final Class<T> resultClass, final @Nullable String message, final @Nullable Throwable cause) throws InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, NoSuchMethodException, SecurityException {
+    T result;
+    if ((message != null) && (cause != null)) {
+      final Optional<Constructor<T>> messageThrowableConstructor = getOptionalConstructor(resultClass, String.class, Throwable.class);
+      if (messageThrowableConstructor.isPresent()) {
+        result = messageThrowableConstructor.get().newInstance(message, cause);
+      } else {
+        result = resultClass.getConstructor(String.class).newInstance(message);
+        result.initCause(cause);
+      }
+    } else if (message != null) {
+      result = resultClass.getConstructor(String.class).newInstance(message);
+    } else if (cause != null) {
+      final Optional<Constructor<T>> throwableConstructor = getOptionalConstructor(resultClass, Throwable.class);
+      if (throwableConstructor.isPresent()) {
+        result = throwableConstructor.get().newInstance(cause);
+      } else {
+        result = resultClass.getConstructor().newInstance();
+        result.initCause(cause);
+      }
+    } else {
+      result = resultClass.getConstructor().newInstance();
+    }
+    return result;
+  }
+
+  protected static final Throwable createThrowable(final String className, final @Nullable String message, final StackTraceElement @Nullable [] stackTrace, final @Nullable Throwable cause) {
+    Throwable result;
+    try {
+      final Class<? extends Throwable> resultClass = Class.forName(className).asSubclass(Throwable.class);
+      result = createThrowable(resultClass, message, cause);
+    } catch (Throwable err) {
+      result = new Throwable(className + (message != null ? ": " + message : ""));
+      if (cause != null) result.initCause(cause);
+    }
+    if (stackTrace != null) result.setStackTrace(stackTrace);
+    return result;
   }
 
   /**
@@ -98,14 +182,14 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
    * @return A new {@link SchemaBuilder}.
    */
   @SuppressWarnings("unchecked")
-  public static SchemaBuilder<@NonNull ? extends SchemaBuilder<@NonNull ?>> buildSchema(final @Nullable URI namespace) {
+  public static SchemaBuilder<@NonNull ? extends SchemaBuilder<@NonNull ?>> buildSOAP12Schema(final @Nullable URI namespace) {
     return new SchemaBuilder<>((Class<SchemaBuilder<?>>)(Object)SchemaBuilder.class, namespace, null, null, false);
   }
 
   protected static class HeaderElementParser extends ContainerElementParser {
 
-    public HeaderElementParser(final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @NonNull ElementParser<?> @Nullable... childValueParsers) {
-      super(HEADER_QNAME, childExceptionParsers, childValueParsers);
+    public HeaderElementParser(final QName elementName, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @NonNull ElementParser<?> @Nullable... childValueParsers) {
+      super(elementName, childExceptionParsers, false, childValueParsers);
       return;
     }
 
@@ -113,8 +197,8 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
 
   protected static class BodyElementParser extends ContainerElementParser {
 
-    public BodyElementParser(final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @NonNull ElementParser<?> @Nullable... childValueParsers) {
-      super(BODY_QNAME, childExceptionParsers, childValueParsers);
+    public BodyElementParser(final QName elementName, final @Nullable Set<? extends ElementParser<? extends Exception>> childExceptionParsers, final @NonNull ElementParser<?> @Nullable... childValueParsers) {
+      super(elementName, childExceptionParsers, false, childValueParsers);
       return;
     }
 
@@ -122,13 +206,13 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
 
   protected static class EnvelopeElementParser extends ContainerElementParser {
 
-    public EnvelopeElementParser(final HeaderElementParser headerParser, final BodyElementParser bodyParser) {
-      super(ENVELOPE_QNAME, null, headerParser, bodyParser);
+    public EnvelopeElementParser(final QName elementName, final HeaderElementParser headerParser, final BodyElementParser bodyParser) {
+      super(elementName, null, false, headerParser, bodyParser);
       return;
     }
 
-    public EnvelopeElementParser(final BodyElementParser bodyParser) {
-      super(ENVELOPE_QNAME, null, bodyParser);
+    public EnvelopeElementParser(final QName elementName, final BodyElementParser bodyParser) {
+      super(elementName, null, false, bodyParser);
       return;
     }
 
@@ -147,7 +231,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
 
     protected SchemaBuilder(final Class<? extends SB> builderType, final @Nullable URI namespace, final @Nullable Set<ElementParser<?>> elementParsers, final @Nullable Map<String,Function<ElementParsingContext,@Nullable Object>> globalInjectionSpecs, final boolean unmodifiable) {
       super(builderType, namespace, elementParsers, globalInjectionSpecs, unmodifiable);
-      this.elementParsers.add(FAULT_ELEMENT_PARSER);
+      this.elementParsers.add(SOAP_1_2_FAULT_ELEMENT_PARSER);
       return;
     }
 
@@ -160,16 +244,17 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
      * Define a <code>Header</code> element (a specialized {@linkplain #defineContainerElementWithChildBuilder(String)
      * container}).
      * 
-     * @return A {@link com.hubick.xml_stream_serialization.parser.xml.XMLStreamParser.SchemaBuilder.ChildElementListBuilder
+     * @return A
+     * {@link com.hubick.xml_stream_serialization.parser.xml.XMLStreamParser.SchemaBuilder.ChildElementListBuilder
      * ChildElementListBuilder} which you can use to define which elements the <code>Header</code> will have as
      * children.
      */
     public final ChildElementListBuilder defineHeaderElementWithChildBuilder() {
-      return new ChildElementListBuilder(Collections.singleton(FAULT_ELEMENT_PARSER), null) {
+      return new ChildElementListBuilder(Collections.singleton(SOAP_1_2_FAULT_ELEMENT_PARSER), null) {
 
         @Override
         public SB completeDefinition() {
-          addParser(new HeaderElementParser(childExceptionParsers, (!childValueParsers.isEmpty()) ? childValueParsers.stream().toArray((n) -> new ElementParser<?>[n]) : null));
+          addParser(new HeaderElementParser(SOAP_1_2_HEADER_QNAME, childExceptionParsers, (!childValueParsers.isEmpty()) ? childValueParsers.stream().toArray((n) -> new ElementParser<?>[n]) : null));
           return Objects.requireNonNull(schemaBuilderType.cast(SchemaBuilder.this));
         }
 
@@ -188,7 +273,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
      * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
      */
     public final <@NonNull CT> SB defineBodyElement(final Class<CT> childElementTargetValueClass, final QName childElementName) throws NoSuchElementException {
-      return addParser(new BodyElementParser(Collections.singleton(FAULT_ELEMENT_PARSER), getParserWithTargetType(childElementTargetValueClass, childElementName)));
+      return addParser(new BodyElementParser(SOAP_1_2_BODY_QNAME, Collections.singleton(SOAP_1_2_FAULT_ELEMENT_PARSER), getParserWithTargetType(childElementTargetValueClass, childElementName)));
     }
 
     /**
@@ -200,7 +285,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
      * @throws NoSuchElementException If the referenced element hasn't been defined in this schema.
      */
     public final SB defineBodyElement(final QName childElementName) throws NoSuchElementException {
-      return addParser(new BodyElementParser(Collections.singleton(FAULT_ELEMENT_PARSER), getParser(childElementName)));
+      return addParser(new BodyElementParser(SOAP_1_2_BODY_QNAME, Collections.singleton(SOAP_1_2_FAULT_ELEMENT_PARSER), getParser(childElementName)));
     }
 
     /**
@@ -220,15 +305,16 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
      * Define a <code>Body</code> element (a specialized {@linkplain #defineContainerElementWithChildBuilder(String)
      * container}).
      * 
-     * @return A {@link com.hubick.xml_stream_serialization.parser.xml.XMLStreamParser.SchemaBuilder.ChildElementListBuilder
+     * @return A
+     * {@link com.hubick.xml_stream_serialization.parser.xml.XMLStreamParser.SchemaBuilder.ChildElementListBuilder
      * ChildElementListBuilder} which you can use to define which elements the <code>Body</code> will have as children.
      */
     public final ChildElementListBuilder defineBodyElementWithChildBuilder() {
-      return new ChildElementListBuilder(Collections.singleton(FAULT_ELEMENT_PARSER), null) {
+      return new ChildElementListBuilder(Collections.singleton(SOAP_1_2_FAULT_ELEMENT_PARSER), null) {
 
         @Override
         public SB completeDefinition() {
-          addParser(new BodyElementParser(childExceptionParsers, (!childValueParsers.isEmpty()) ? childValueParsers.stream().toArray((n) -> new ElementParser<?>[n]) : null));
+          addParser(new BodyElementParser(SOAP_1_2_BODY_QNAME, childExceptionParsers, (!childValueParsers.isEmpty()) ? childValueParsers.stream().toArray((n) -> new ElementParser<?>[n]) : null));
           return Objects.requireNonNull(schemaBuilderType.cast(SchemaBuilder.this));
         }
 
@@ -245,7 +331,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
      * @throws NoSuchElementException If the referenced <code>Header</code> element hasn't been defined in this schema.
      */
     public final SB defineEnvelopeElement(final boolean hasHeader) throws NoSuchElementException {
-      return addParser(hasHeader ? new EnvelopeElementParser(getParserOfParserType(HeaderElementParser.class, HEADER_QNAME), getParserOfParserType(BodyElementParser.class, BODY_QNAME)) : new EnvelopeElementParser(getParserOfParserType(BodyElementParser.class, BODY_QNAME)));
+      return addParser(hasHeader ? new EnvelopeElementParser(SOAP_1_2_ENVELOPE_QNAME, getParserOfParserType(HeaderElementParser.class, SOAP_1_2_HEADER_QNAME), getParserOfParserType(BodyElementParser.class, SOAP_1_2_BODY_QNAME)) : new EnvelopeElementParser(SOAP_1_2_ENVELOPE_QNAME, getParserOfParserType(BodyElementParser.class, SOAP_1_2_BODY_QNAME)));
     }
 
     @Override
@@ -268,7 +354,7 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
      * @see #createSOAPParser(Class, String, String[])
      */
     public <@NonNull T> SOAPStreamParser<T> createSOAPParser(final Class<T> targetValueClass, final QName targetContainerElementName, final @NonNull QName... targetValueElementNames) throws NoSuchElementException {
-      return new SOAPStreamParser<T>(targetValueClass, Collections.singleton(getParserOfParserType(EnvelopeElementParser.class, ENVELOPE_QNAME)), getParserOfParserType(ContainerElementParser.class, targetContainerElementName), getParsersWithTargetType(targetValueClass, targetValueElementNames));
+      return new SOAPStreamParser<T>(targetValueClass, Collections.singleton(getParserOfParserType(EnvelopeElementParser.class, SOAP_1_2_ENVELOPE_QNAME)), getParserOfParserType(ContainerElementParser.class, targetContainerElementName), getParsersWithTargetType(targetValueClass, targetValueElementNames));
     }
 
     /**

@@ -17,6 +17,15 @@
             <jaxws:frame class="java.util.concurrent.ThreadPoolExecutor$Worker" file="ThreadPoolExecutor.java" line="615" method="run" />
             <jaxws:frame class="java.lang.Thread" file="Thread.java" line="745" method="run" />
           </jaxws:stackTrace>
+          <jaxws:cause class="java.io.IOException">
+            <jaxws:message>Filesystem error.</jaxws:message>
+            <jaxws:stackTrace>
+              <jaxws:frame class="org.apache.tomcat.util.net.JIoEndpoint$SocketProcessor" file="JIoEndpoint.java" line="310" method="run" />
+              <jaxws:frame class="java.util.concurrent.ThreadPoolExecutor" file="ThreadPoolExecutor.java" line="1145" method="runWorker" />
+              <jaxws:frame class="java.util.concurrent.ThreadPoolExecutor$Worker" file="ThreadPoolExecutor.java" line="615" method="run" />
+              <jaxws:frame class="java.lang.Thread" file="Thread.java" line="745" method="run" />
+            </jaxws:stackTrace>
+          </jaxws:cause>
         </jaxws:exception>
       </env:Detail>
     </env:Fault>

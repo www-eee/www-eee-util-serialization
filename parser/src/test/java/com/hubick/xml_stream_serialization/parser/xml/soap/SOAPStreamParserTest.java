@@ -28,13 +28,13 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 @NonNullByDefault
 public class SOAPStreamParserTest {
-  protected static final SOAPStreamParser<Departure> DEPARTURE_STREAM_PARSER = SOAPStreamParser.buildSchema(URI.create("https://chris.hubick.com/ns/"))
+  protected static final SOAPStreamParser<Departure> DEPARTURE_STREAM_PARSER = SOAPStreamParser.buildSOAP12Schema(URI.create("https://chris.hubick.com/ns/"))
       .defineSimpleElement("departureYear", Year.class, (ctx, value) -> Year.parse(value), true).defineHeaderElementWithChildBuilder().addChildValueElement("departureYear").completeDefinition()
       .defineStringElement("departing")
       .defineSimpleElement("departureMonthDay", MonthDay.class, MonthDay::parse)
       .defineElementWithInjectedTargetBuilder("departure", Departure.class).injectChildObject("Departing", "departing").injectChildObject("DepartureMonthDay", "departureMonthDay").injectSavedObject("DepartureYear", "departureYear").completeDefinition()
       // .defineElementWithChildBuilder("departure", Departure.class, (ctx) -> new Departure(ctx.getRequiredChildValue("departing", String.class), ctx.getRequiredChildValue("departureMonthDay", MonthDay.class).atYear(ctx.getRequiredSavedValue("departureYear", Year.class).getValue())), false).addChildValueElement("departing").addChildValueElement("departureMonthDay").completeDefinition()
-      .defineContainerElementWithChildBuilder("departures").addChildValueElement("departure").addChildExceptionElement(SOAPStreamParser.FAULT_QNAME).completeDefinition()
+      .defineContainerElementWithChildBuilder("departures").addChildValueElement("departure").addChildExceptionElement(SOAPStreamParser.SOAP_1_2_FAULT_QNAME).completeDefinition()
       .defineBodyElement("departures")
       .defineEnvelopeElement(true).createSOAPParser(Departure.class, "departures", "departure");
 
@@ -66,7 +66,22 @@ public class SOAPStreamParserTest {
         throw eee.getCause();
       }
     });
-    assertEquals(sfe.getMessage(), "Server went boom.");
+
+    assertEquals("Server went boom.", sfe.getMessage());
+
+    assertNotNull(sfe.getCause());
+    assertEquals(java.sql.SQLException.class, sfe.getCause().getClass());
+    assertEquals("Database went boom.", sfe.getCause().getMessage());
+    assertNotNull(sfe.getCause().getStackTrace());
+    assertEquals("org.apache.tomcat.util.net.JIoEndpoint$SocketProcessor", sfe.getCause().getStackTrace()[0].getClassName());
+    assertEquals("run", sfe.getCause().getStackTrace()[0].getMethodName());
+    assertEquals("JIoEndpoint.java", sfe.getCause().getStackTrace()[0].getFileName());
+    assertEquals(310, sfe.getCause().getStackTrace()[0].getLineNumber());
+
+    assertNotNull(sfe.getCause().getCause());
+    assertEquals(java.io.IOException.class, sfe.getCause().getCause().getClass());
+    assertEquals("Filesystem error.", sfe.getCause().getCause().getMessage());
+
     return;
   }
 
@@ -88,7 +103,7 @@ public class SOAPStreamParserTest {
         throw eee.getCause();
       }
     });
-    assertEquals(sfe.getMessage(), "Invalid departure record.");
+    assertEquals("Invalid departure record.", sfe.getMessage());
     return;
   }
 
