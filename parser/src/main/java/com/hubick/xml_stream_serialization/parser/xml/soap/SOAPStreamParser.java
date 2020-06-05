@@ -127,7 +127,11 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
     return;
   }
 
-  protected static final <T> Optional<Constructor<T>> getOptionalConstructor(final Class<T> resultClass, final Class<?>... parameterTypes) throws SecurityException {
+  /**
+   * Get a {@link Constructor} for the specified class which has the supplied parameter types, catching any
+   * {@link NoSuchMethodException}.
+   */
+  protected static final <T> Optional<Constructor<T>> getConstructorOptional(final Class<T> resultClass, final Class<?>... parameterTypes) throws SecurityException {
     try {
       return Optional.of(resultClass.getConstructor(parameterTypes));
     } catch (NoSuchMethodException nsme) {
@@ -135,28 +139,54 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
     }
   }
 
-  protected static final <T extends Throwable> T createThrowable(final Class<T> resultClass, final @Nullable String message, final @Nullable Throwable cause) throws InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, NoSuchMethodException, SecurityException {
+  /**
+   * Get a {@link Constructor} for the specified {@link Throwable} class which accepts both
+   * {@linkplain Throwable#getMessage() message} and {@linkplain Throwable#getCause() cause} parameters.
+   */
+  private static final <T extends Throwable> Optional<Constructor<T>> findMessageAndCauseConstructorForThrowableClass(final Class<T> resultClass, final @Nullable Class<? extends Throwable> causeClass) throws NoSuchMethodException, SecurityException {
+    final Optional<Constructor<T>> messageAndCauseConstructor = getConstructorOptional(resultClass, String.class, causeClass);
+    if (messageAndCauseConstructor.isPresent()) return messageAndCauseConstructor;
+    if (!Throwable.class.equals(causeClass)) return findMessageAndCauseConstructorForThrowableClass(resultClass, causeClass.getSuperclass().asSubclass(Throwable.class)); // Is there a constructor which accepts cause's parent class? Recurse our way up to Throwable.
+    return Optional.empty();
+  }
+
+  /**
+   * Get a {@link Constructor} for the specified {@link Throwable} class which accepts a
+   * {@linkplain Throwable#getCause() cause} parameter.
+   */
+  private static final <T extends Throwable> Optional<Constructor<T>> findCauseConstructorForThrowableClass(final Class<T> resultClass, final @Nullable Class<? extends Throwable> causeClass) throws NoSuchMethodException, SecurityException {
+    final Optional<Constructor<T>> causeConstructor = getConstructorOptional(resultClass, causeClass);
+    if (causeConstructor.isPresent()) return causeConstructor;
+    if (!Throwable.class.equals(causeClass)) return findCauseConstructorForThrowableClass(resultClass, causeClass.getSuperclass().asSubclass(Throwable.class)); // Is there a constructor which accepts cause's parent class? Recurse our way up to Throwable.
+    return Optional.empty();
+  }
+
+  /**
+   * Search for a {@link Constructor} for the specified {@link Throwable} class and use it to create a
+   * {@linkplain Constructor#newInstance(Object...) new instance}.
+   */
+  private static final <T extends Throwable> T findConstructorForThrowableClassAndCreateInstance(final Class<T> throwableClass, final @Nullable String message, final @Nullable Throwable cause) throws InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, NoSuchMethodException, SecurityException {
     T result;
     if ((message != null) && (cause != null)) {
-      final Optional<Constructor<T>> messageThrowableConstructor = getOptionalConstructor(resultClass, String.class, Throwable.class);
-      if (messageThrowableConstructor.isPresent()) {
-        result = messageThrowableConstructor.get().newInstance(message, cause);
+      final Optional<Constructor<T>> messageAndCauseConstructor = findMessageAndCauseConstructorForThrowableClass(throwableClass, cause.getClass());
+      if (messageAndCauseConstructor.isPresent()) {
+        result = messageAndCauseConstructor.get().newInstance(message, cause);
       } else {
-        result = resultClass.getConstructor(String.class).newInstance(message);
+        result = throwableClass.getConstructor(String.class).newInstance(message);
         result.initCause(cause);
       }
     } else if (message != null) {
-      result = resultClass.getConstructor(String.class).newInstance(message);
+      result = throwableClass.getConstructor(String.class).newInstance(message);
     } else if (cause != null) {
-      final Optional<Constructor<T>> throwableConstructor = getOptionalConstructor(resultClass, Throwable.class);
-      if (throwableConstructor.isPresent()) {
-        result = throwableConstructor.get().newInstance(cause);
+      final Optional<Constructor<T>> causeConstructor = findCauseConstructorForThrowableClass(throwableClass, Throwable.class);
+      if (causeConstructor.isPresent()) {
+        result = causeConstructor.get().newInstance(cause);
       } else {
-        result = resultClass.getConstructor().newInstance();
+        result = throwableClass.getConstructor().newInstance();
         result.initCause(cause);
       }
     } else {
-      result = resultClass.getConstructor().newInstance();
+      result = throwableClass.getConstructor().newInstance();
     }
     return result;
   }
@@ -165,9 +195,9 @@ public class SOAPStreamParser<@NonNull T> extends XMLStreamParser<T> {
     Throwable result;
     try {
       final Class<? extends Throwable> resultClass = Class.forName(className).asSubclass(Throwable.class);
-      result = createThrowable(resultClass, message, cause);
-    } catch (Throwable err) {
-      result = new Throwable(className + (message != null ? ": " + message : ""));
+      result = findConstructorForThrowableClassAndCreateInstance(resultClass, message, cause); // I don't see any harm in giving this a reasonable try.
+    } catch (Throwable err) { // This will trap ClassNotFoundError's if we try to create server side classes which don't exist in this JVM, as well as catch any NoSuchMethodException's if we can't find a constructor we can figure out how to invoke on it.
+      result = new Throwable(className + (message != null ? ": " + message : "")); // Fall back to creating a generic Throwable instance, with the server side exception named in the message.
       if (cause != null) result.initCause(cause);
     }
     if (stackTrace != null) result.setStackTrace(stackTrace);
