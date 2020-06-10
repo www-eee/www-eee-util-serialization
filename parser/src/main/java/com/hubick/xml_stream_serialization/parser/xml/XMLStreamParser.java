@@ -26,6 +26,8 @@ import org.jooq.*;
 import org.jooq.exception.*;
 import org.jooq.impl.*;
 
+import com.hubick.util.jooq.*;
+
 
 /**
  * A class allowing you to {@linkplain #parse(InputStream) parse} XML by iterating over a stream of target value objects
@@ -702,7 +704,9 @@ public class XMLStreamParser<@NonNull T> {
       getChildValues().map(Map.Entry::getKey).map(Map.Entry::getKey).map(QName::getLocalPart).forEach(defineField);
       if (injectionSpecs != null) injectionSpecs.keySet().forEach(defineField);
 
-      final org.jooq.Record record = DSL.using(SQLDialect.DEFAULT).newRecord(fields.values().stream().toArray(Field<?>[]::new));
+      final DSLContext dslContext = DSL.using(SQLDialect.DEFAULT);
+      dslContext.configuration().set(new ImmutablePOJORecordMapper(dslContext.configuration()));
+      final org.jooq.Record record = dslContext.newRecord(fields.values().stream().toArray(Field<?>[]::new));
 
       getAttrs().entrySet().forEach((entry) -> record.<Object> set(Objects.requireNonNull(fields.get(entry.getKey().getLocalPart())), entry.getValue()));
       getChildValues().forEach((entry) -> new AbstractMap.SimpleImmutableEntry<String,Object>(entry.getKey().getKey().getLocalPart(), entry.getValue().toArray((Object[])java.lang.reflect.Array.newInstance(entry.getKey().getValue(), entry.getValue().size()))));
