@@ -672,18 +672,19 @@ public class XMLStreamParser<@NonNull T> {
 
     /**
      * <p>
-     * Construct a new instance of the specified <code>injectedValueClass</code> by creating a {@link Record} containing
-     * the data from the element currently being parsed and {@linkplain Record#into(Class) injecting} it into the
-     * target.
+     * Construct a new instance of the specified <code>injectedValueClass</code> by creating a {@link org.jooq.Record
+     * Record} containing the data from the element currently being parsed and {@linkplain org.jooq.Record#into(Class)
+     * injecting} it into the target.
      * </p>
      * 
      * <p>
-     * The {@link Record} created to perform the injection will automatically be populated with a {@link Field} for each
-     * of the {@linkplain #getAttrs() attributes} and {@linkplain #getChildValues() child values} from this parsing
-     * context (using the {@linkplain QName#getLocalPart() local name} as the injected {@linkplain Field#getName() field
-     * name} for each). Child values will be injected as an {@link java.lang.reflect.Array Array} in order to provide
-     * strong typing information for use by the {@link DefaultRecordMapper} in performing data type conversions. You can
-     * provide <code>injectionSpecs</code> to override this default behaviour.
+     * The {@link org.jooq.Record Record} created to perform the injection will automatically be populated with a
+     * {@link Field} for each of the {@linkplain #getAttrs() attributes} and {@linkplain #getChildValues() child values}
+     * from this parsing context (using the {@linkplain QName#getLocalPart() local name} as the injected
+     * {@linkplain Field#getName() field name} for each). Child values will be injected as an
+     * {@link java.lang.reflect.Array Array} in order to provide strong typing information for use by the
+     * {@link DefaultRecordMapper} in performing data type conversions. You can provide <code>injectionSpecs</code> to
+     * override this default behaviour.
      * </p>
      * 
      * @param <IT> The type of object being injected.
@@ -721,18 +722,19 @@ public class XMLStreamParser<@NonNull T> {
 
     /**
      * <p>
-     * Construct a new instance of the specified <code>injectedValueClass</code> by creating a {@link Record} containing
-     * the data from the element currently being parsed and {@linkplain Record#into(Class) injecting} it into the
-     * target.
+     * Construct a new instance of the specified <code>injectedValueClass</code> by creating a {@link org.jooq.Record
+     * Record} containing the data from the element currently being parsed and {@linkplain org.jooq.Record#into(Class)
+     * injecting} it into the target.
      * </p>
      * 
      * <p>
-     * The {@link Record} created to perform the injection will automatically be populated with a {@link Field} for each
-     * of the {@linkplain #getAttrs() attributes} and {@linkplain #getChildValues() child values} from this parsing
-     * context (using the {@linkplain QName#getLocalPart() local name} as the injected {@linkplain Field#getName() field
-     * name} for each). Child values will be injected as an {@link java.lang.reflect.Array Array} in order to provide
-     * strong typing information for use by the {@link DefaultRecordMapper} in performing data type conversions. You can
-     * provide <code>injectionSpecs</code> to override this default behaviour.
+     * The {@link org.jooq.Record Record} created to perform the injection will automatically be populated with a
+     * {@link Field} for each of the {@linkplain #getAttrs() attributes} and {@linkplain #getChildValues() child values}
+     * from this parsing context (using the {@linkplain QName#getLocalPart() local name} as the injected
+     * {@linkplain Field#getName() field name} for each). Child values will be injected as an
+     * {@link java.lang.reflect.Array Array} in order to provide strong typing information for use by the
+     * {@link DefaultRecordMapper} in performing data type conversions. You can provide <code>injectionSpecs</code> to
+     * override this default behaviour.
      * </p>
      * 
      * @param <IT> The type of object being injected.
@@ -1512,8 +1514,8 @@ public class XMLStreamParser<@NonNull T> {
      * Add a custom injection specification for <code>injectedFieldName</code> to <em>all</em> injected objects
      * subsequently defined through this schema.
      * 
-     * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the resulting value should
-     * be populated into for injection.
+     * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the resulting
+     * value should be populated into for injection.
      * @param injectionSpec A Function which will return a value to be injected into <code>injectedFieldName</code>
      * based on the {@link XMLStreamParser.ElementParsingContext ElementParsingContext}.
      * @return The {@link XMLStreamParser.SchemaBuilder SchemaBuilder} this method was invoked on.
@@ -1764,8 +1766,8 @@ public class XMLStreamParser<@NonNull T> {
      * {@linkplain #defineElementWithChildBuilder(String, Class, Function, boolean, boolean) build an element definition
      * containing child elements}, or the method to {@linkplain #defineSimpleElement(String, Class, BiFunction, boolean)
      * define a simple element containing only character data}. Also, you should be using a different method to
-     * {@linkplain #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean, boolean) define an element producing a
-     * target value which can be constructed using injection}.
+     * {@linkplain #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean, boolean) define an element
+     * producing a target value which can be constructed using injection}.
      * </p>
      * 
      * @param <ET> The type of target value which will be provided when the defined element is parsed.
@@ -1799,8 +1801,8 @@ public class XMLStreamParser<@NonNull T> {
      * {@linkplain #defineElement(String, Class, Function) define an element with no child data}, or the method to
      * {@linkplain #defineSimpleElement(String, Class, BiFunction, boolean) define a simple element containing only
      * character data}. Also, you should be using a different method to
-     * {@linkplain #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean, boolean) define an element producing a
-     * target value which can be constructed using injection}.
+     * {@linkplain #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean, boolean) define an element
+     * producing a target value which can be constructed using injection}.
      * </p>
      * 
      * @param <ET> The type of target value which will be provided when the defined element is parsed.
@@ -1852,8 +1854,8 @@ public class XMLStreamParser<@NonNull T> {
      * <p>
      * This method is for defining injected elements without any children, if your element contains children, you should
      * be defining it using the method to
-     * {@linkplain #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean, boolean) build an injected element
-     * definition containing child elements}. If you want to construct the target value yourself, without using
+     * {@linkplain #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean, boolean) build an injected
+     * element definition containing child elements}. If you want to construct the target value yourself, without using
      * injection, you should be using the method to {@linkplain #defineElement(String, Class, Function) define an
      * element with no child data}.
      * </p>
@@ -1886,8 +1888,8 @@ public class XMLStreamParser<@NonNull T> {
      * <p>
      * This method is for defining injected elements without any children, if your element contains children, you should
      * be defining it using the method to
-     * {@linkplain #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean, boolean) build an injected element
-     * definition containing child elements}. If you want to construct the target value yourself, without using
+     * {@linkplain #defineElementWithInjectedTargetBuilder(String, Class, Class, boolean, boolean) build an injected
+     * element definition containing child elements}. If you want to construct the target value yourself, without using
      * injection, you should be using the method to {@linkplain #defineElement(String, Class, Function) define an
      * element with no child data}.
      * </p>
@@ -2507,8 +2509,8 @@ public class XMLStreamParser<@NonNull T> {
       /**
        * Add a custom injection specification for <code>injectedFieldName</code>.
        * 
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the resulting value
-       * should be populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the resulting
+       * value should be populated into for injection.
        * @param injectionSpec A Function which will return a value to be injected into <code>injectedFieldName</code>
        * based on the {@link XMLStreamParser.ElementParsingContext ElementParsingContext}.
        * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
@@ -2523,8 +2525,8 @@ public class XMLStreamParser<@NonNull T> {
        * Specify that any value for <code>attrName</code> on the element currently being defined should be injected into
        * <code>injectedFieldName</code> on the target class after having the <code>attrValueFunction</code> applied.
        * 
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the attribute value
-       * should be populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the attribute
+       * value should be populated into for injection.
        * @param attrName The name of the {@linkplain StartElement#getAttributeByName(QName) attribute value} being
        * injected.
        * @param attrValueFunction A {@link Function} which should be applied to the attribute value before it is
@@ -2550,8 +2552,8 @@ public class XMLStreamParser<@NonNull T> {
        * Specify that any value for <code>attrName</code> on the element currently being defined should be injected into
        * <code>injectedFieldName</code> on the target class after having the <code>attrValueFunction</code> applied.
        * 
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the attribute value
-       * should be populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the attribute
+       * value should be populated into for injection.
        * @param attrName The {@linkplain QName#getLocalPart() local name} of the
        * {@linkplain StartElement#getAttributeByName(QName) attribute value} being injected
        * ({@linkplain XMLConstants#NULL_NS_URI no namespace} will be used).
@@ -2617,8 +2619,8 @@ public class XMLStreamParser<@NonNull T> {
        * Specify that any value for <code>attrName</code> on the element currently being defined should be injected into
        * <code>injectedFieldName</code> on the target class.
        * 
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the attribute value
-       * should be populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the attribute
+       * value should be populated into for injection.
        * @param attrName The name of the {@linkplain StartElement#getAttributeByName(QName) attribute value} being
        * injected.
        * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
@@ -2639,8 +2641,8 @@ public class XMLStreamParser<@NonNull T> {
        * Specify that any value for <code>attrName</code> on the element currently being defined should be injected into
        * <code>injectedFieldName</code> on the target class.
        * 
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the attribute value
-       * should be populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the attribute
+       * value should be populated into for injection.
        * @param attrName The {@linkplain QName#getLocalPart() local name} of the
        * {@linkplain StartElement#getAttributeByName(QName) attribute value} being injected
        * ({@linkplain XMLConstants#NULL_NS_URI no namespace} will be used).
@@ -2670,8 +2672,8 @@ public class XMLStreamParser<@NonNull T> {
        * 
        * @param <CT> The type of target value which will be constructed when the child element is parsed.
        * @param <IT> The type of value which will be injected into the field.
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the child value should be
-       * populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the child value
+       * should be populated into for injection.
        * @param childElementName The name of the referenced element you wish to add as a child and have injected.
        * @param childElementTargetValueClass The target value type produced by the referenced element definition you
        * wish to add as a child and have injected.
@@ -2705,8 +2707,8 @@ public class XMLStreamParser<@NonNull T> {
        * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
        * </p>
        * 
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the child value should be
-       * populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the child value
+       * should be populated into for injection.
        * @param childElementName The name of the referenced element you wish to add as a child and have injected.
        * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
        * this method was invoked on.
@@ -2734,8 +2736,8 @@ public class XMLStreamParser<@NonNull T> {
        * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
        * </p>
        * 
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the child value should be
-       * populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the child value
+       * should be populated into for injection.
        * @param childElementName The {@linkplain QName#getLocalPart() local name} of the referenced element you wish to
        * add as a child and have injected (the {@linkplain XMLStreamParser.SchemaBuilder#getNamespace() current
        * namespace} will be used).
@@ -2790,8 +2792,8 @@ public class XMLStreamParser<@NonNull T> {
        * 
        * @param <CT> The type of target value which will be constructed when the child element is parsed.
        * @param <IT> The type of value which will be injected into the field.
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the child values should
-       * be populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the child values
+       * should be populated into for injection.
        * @param childElementName The name of the referenced element you wish to add as a child and have injected.
        * @param childElementTargetValueClass The target value type produced by the referenced element definition you
        * wish to add as a child and have injected.
@@ -2823,8 +2825,8 @@ public class XMLStreamParser<@NonNull T> {
        * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
        * </p>
        * 
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the child values should
-       * be populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the child values
+       * should be populated into for injection.
        * @param childElementName The name of the referenced element you wish to add as a child and have injected.
        * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
        * this method was invoked on.
@@ -2851,8 +2853,8 @@ public class XMLStreamParser<@NonNull T> {
        * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
        * </p>
        * 
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the child values should
-       * be populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the child values
+       * should be populated into for injection.
        * @param childElementName The {@linkplain QName#getLocalPart() local name} of the referenced element you wish to
        * add as a child and have injected (the {@linkplain XMLStreamParser.SchemaBuilder#getNamespace() current
        * namespace} will be used).
@@ -2880,8 +2882,8 @@ public class XMLStreamParser<@NonNull T> {
        * 
        * @param <CT> The type of target value which will be constructed when the child element is parsed.
        * @param <IT> The type of value which will be injected into the field.
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the child values should
-       * be populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the child values
+       * should be populated into for injection.
        * @param childElementName The name of the referenced element you wish to add as a child and have injected.
        * @param childElementTargetValueClass The target value type produced by the referenced element definition you
        * wish to add as a child and have injected.
@@ -2911,8 +2913,8 @@ public class XMLStreamParser<@NonNull T> {
        * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
        * </p>
        * 
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the child values should
-       * be populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the child values
+       * should be populated into for injection.
        * @param childElementName The name of the referenced element you wish to add as a child and have injected.
        * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
        * this method was invoked on.
@@ -2939,8 +2941,8 @@ public class XMLStreamParser<@NonNull T> {
        * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
        * </p>
        * 
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the child values should
-       * be populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the child values
+       * should be populated into for injection.
        * @param childElementName The {@linkplain QName#getLocalPart() local name} of the referenced element you wish to
        * add as a child and have injected (the {@linkplain XMLStreamParser.SchemaBuilder#getNamespace() current
        * namespace} will be used).
@@ -2968,8 +2970,8 @@ public class XMLStreamParser<@NonNull T> {
        * 
        * @param <CT> The type of target value which will be constructed when the child element is parsed.
        * @param <IT> The type of value which will be injected into the field.
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the child values should
-       * be populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the child values
+       * should be populated into for injection.
        * @param childElementName The name of the referenced element you wish to add as a child and have injected.
        * @param childElementTargetValueClass The target value type produced by the referenced element definition you
        * wish to add as a child and have injected.
@@ -2999,8 +3001,8 @@ public class XMLStreamParser<@NonNull T> {
        * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
        * </p>
        * 
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the child values should
-       * be populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the child values
+       * should be populated into for injection.
        * @param childElementName The name of the referenced element you wish to add as a child and have injected.
        * @return The {@link XMLStreamParser.SchemaBuilder.InjectedTargetElementBuilder InjectedTargetElementBuilder}
        * this method was invoked on.
@@ -3027,8 +3029,8 @@ public class XMLStreamParser<@NonNull T> {
        * Note that the child element must already have been defined <em>prior</em> to it being referenced here.
        * </p>
        * 
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the child values should
-       * be populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the child values
+       * should be populated into for injection.
        * @param childElementName The {@linkplain QName#getLocalPart() local name} of the referenced element you wish to
        * add as a child and have injected (the {@linkplain XMLStreamParser.SchemaBuilder#getNamespace() current
        * namespace} will be used).
@@ -3056,8 +3058,8 @@ public class XMLStreamParser<@NonNull T> {
        * 
        * @param <ST> The type of target value which will be constructed when the saved element is parsed.
        * @param <IT> The type of value which will be injected into the field.
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the saved value should be
-       * populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the saved value
+       * should be populated into for injection.
        * @param savedElementName The name of the element whose
        * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValueOrNull(QName, Class) saved value} you wish to
        * have injected.
@@ -3091,8 +3093,8 @@ public class XMLStreamParser<@NonNull T> {
        * Note that the saved element must already have been defined <em>prior</em> to it being referenced here.
        * </p>
        * 
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the saved value should be
-       * populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the saved value
+       * should be populated into for injection.
        * @param savedElementName The name of the element whose
        * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValueOrNull(QName, Class) saved value} you wish to
        * have injected.
@@ -3119,8 +3121,8 @@ public class XMLStreamParser<@NonNull T> {
        * Note that the saved element must already have been defined <em>prior</em> to it being referenced here.
        * </p>
        * 
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the saved value should be
-       * populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the saved value
+       * should be populated into for injection.
        * @param savedElementName The {@linkplain QName#getLocalPart() local name} of the element whose
        * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValueOrNull(QName, Class) saved value} you wish to
        * have injected (the {@linkplain XMLStreamParser.SchemaBuilder#getNamespace() current namespace} will be used).
@@ -3149,8 +3151,8 @@ public class XMLStreamParser<@NonNull T> {
        * 
        * @param <ST> The type of target value which will be constructed when the saved element is parsed.
        * @param <IT> The type of value which will be injected into the field.
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the saved values should
-       * be populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the saved values
+       * should be populated into for injection.
        * @param savedElementName The name of the element whose
        * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values} you wish to have
        * injected.
@@ -3182,8 +3184,8 @@ public class XMLStreamParser<@NonNull T> {
        * Note that the saved element must already have been defined <em>prior</em> to it being referenced here.
        * </p>
        * 
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the saved values should
-       * be populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the saved values
+       * should be populated into for injection.
        * @param savedElementName The name of the element whose
        * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values} you wish to have
        * injected.
@@ -3212,8 +3214,8 @@ public class XMLStreamParser<@NonNull T> {
        * Note that the saved element must already have been defined <em>prior</em> to it being referenced here.
        * </p>
        * 
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the saved values should
-       * be populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the saved values
+       * should be populated into for injection.
        * @param savedElementName The {@linkplain QName#getLocalPart() local name} of the element whose
        * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values} you wish to have
        * injected (the {@linkplain XMLStreamParser.SchemaBuilder#getNamespace() current namespace} will be used).
@@ -3241,8 +3243,8 @@ public class XMLStreamParser<@NonNull T> {
        * 
        * @param <ST> The type of target value which will be constructed when the saved element is parsed.
        * @param <IT> The type of value which will be injected into the field.
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the saved values should
-       * be populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the saved values
+       * should be populated into for injection.
        * @param savedElementName The name of the element whose
        * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values} you wish to have
        * injected.
@@ -3273,8 +3275,8 @@ public class XMLStreamParser<@NonNull T> {
        * Note that the saved element must already have been defined <em>prior</em> to it being referenced here.
        * </p>
        * 
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the saved values should
-       * be populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the saved values
+       * should be populated into for injection.
        * @param savedElementName The name of the element whose
        * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values} you wish to have
        * injected.
@@ -3301,8 +3303,8 @@ public class XMLStreamParser<@NonNull T> {
        * Note that the saved element must already have been defined <em>prior</em> to it being referenced here.
        * </p>
        * 
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the saved values should
-       * be populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the saved values
+       * should be populated into for injection.
        * @param savedElementName The {@linkplain QName#getLocalPart() local name} of the element whose
        * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values} you wish to have
        * injected (the {@linkplain XMLStreamParser.SchemaBuilder#getNamespace() current namespace} will be used).
@@ -3330,8 +3332,8 @@ public class XMLStreamParser<@NonNull T> {
        * 
        * @param <ST> The type of target value which will be constructed when the saved element is parsed.
        * @param <IT> The type of value which will be injected into the field.
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the saved values should
-       * be populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the saved values
+       * should be populated into for injection.
        * @param savedElementName The name of the element whose
        * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values} you wish to have
        * injected.
@@ -3362,8 +3364,8 @@ public class XMLStreamParser<@NonNull T> {
        * Note that the saved element must already have been defined <em>prior</em> to it being referenced here.
        * </p>
        * 
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the saved values should
-       * be populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the saved values
+       * should be populated into for injection.
        * @param savedElementName The name of the element whose
        * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values} you wish to have
        * injected.
@@ -3390,8 +3392,8 @@ public class XMLStreamParser<@NonNull T> {
        * Note that the saved element must already have been defined <em>prior</em> to it being referenced here.
        * </p>
        * 
-       * @param injectedFieldName The name of the {@linkplain Record#set(Field, Object) field} the saved values should
-       * be populated into for injection.
+       * @param injectedFieldName The name of the {@linkplain org.jooq.Record#set(Field, Object) field} the saved values
+       * should be populated into for injection.
        * @param savedElementName The {@linkplain QName#getLocalPart() local name} of the element whose
        * {@linkplain XMLStreamParser.ElementParsingContext#getSavedValues(QName, Class) saved values} you wish to have
        * injected (the {@linkplain XMLStreamParser.SchemaBuilder#getNamespace() current namespace} will be used).
