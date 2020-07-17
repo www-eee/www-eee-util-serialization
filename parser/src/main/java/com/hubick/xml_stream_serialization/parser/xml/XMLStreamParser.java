@@ -26,8 +26,6 @@ import org.jooq.*;
 import org.jooq.exception.*;
 import org.jooq.impl.*;
 
-import com.hubick.util.jooq.*;
-
 
 /**
  * A class allowing you to {@linkplain #parse(InputStream) parse} XML by iterating over a stream of target value objects
@@ -706,7 +704,6 @@ public class XMLStreamParser<@NonNull T> {
       if (injectionSpecs != null) injectionSpecs.keySet().forEach(defineField);
 
       final DSLContext dslContext = DSL.using(SQLDialect.DEFAULT);
-      dslContext.configuration().set(new ImmutablePOJORecordMapper(dslContext.configuration()));
       final org.jooq.Record record = dslContext.newRecord(fields.values().stream().toArray(Field<?>[]::new));
 
       getAttrs().entrySet().forEach((entry) -> record.<Object> set(Objects.requireNonNull(fields.get(entry.getKey().getLocalPart())), entry.getValue()));
