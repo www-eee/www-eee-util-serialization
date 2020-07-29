@@ -14,7 +14,7 @@
 
   <properties>
     <xml-ws-api.version>2.3.2</xml-ws-api.version>
-    <jooq.version>3.13.3</jooq.version>
+    <jooq.version>3.13.4</jooq.version>
     <jool.version>0.9.14</jool.version>
     <xml-ws-rt.version>2.3.2-1</xml-ws-rt.version>
   </properties>
